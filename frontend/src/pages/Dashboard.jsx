@@ -30,7 +30,7 @@ function Dashboard({ user, setUser }) {
               </div>
               <div className="d-flex align-items-center gap-2 text-muted">
                 <MdCalendarToday className="fs-5 text-primary" />
-                <span><strong>Birth Year:</strong> {user.birthYear}</span>
+                <span><strong>Date of Birth:</strong> {user.dob}</span>
               </div>
               <div className="d-flex align-items-center gap-2 text-muted">
                 <MdSchool className="fs-5 text-primary" />

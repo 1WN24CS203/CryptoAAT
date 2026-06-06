@@ -8,7 +8,7 @@ function Register({ setUser }) {
     name: '',
     email: '',
     password: '',
-    birthYear: '',
+    dob: '',
     collegeName: '',
     favoriteWord: '',
   });
@@ -31,7 +31,7 @@ function Register({ setUser }) {
     setError('');
 
     // Extra validation
-    if (!formData.name || !formData.email || !formData.password || !formData.birthYear || !formData.collegeName || !formData.favoriteWord) {
+    if (!formData.name || !formData.email || !formData.password || !formData.dob || !formData.collegeName || !formData.favoriteWord) {
       setError('Please fill in all the fields');
       return;
     }
@@ -47,7 +47,7 @@ function Register({ setUser }) {
         _id: data._id,
         name: data.name,
         email: data.email,
-        birthYear: formData.birthYear,
+        dob: formData.dob,
         collegeName: formData.collegeName,
         favoriteWord: formData.favoriteWord,
         analysis: data.analysis
@@ -102,16 +102,13 @@ function Register({ setUser }) {
             </div>
 
             <div className="mb-3">
-              <label className="form-label text-muted small">Birth Year</label>
+              <label className="form-label text-muted small">Date of Birth</label>
               <input
-                type="number"
-                name="birthYear"
-                value={formData.birthYear}
+                type="date"
+                name="dob"
+                value={formData.dob}
                 onChange={handleChange}
                 className="form-control custom-input"
-                placeholder="e.g. 1998"
-                min="1900"
-                max="2026"
                 required
               />
             </div>
