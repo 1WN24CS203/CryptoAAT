@@ -4,12 +4,12 @@
  * Generates a targeted wordlist from personal info patterns
  * Enhanced to split multi-word name and college inputs into individual bases.
  */
-export const generateWordlistJS = (name = '', birthYear = '', college = '', favoriteWord = '') => {
+export const generateWordlistJS = (name = '', dob = '', college = '', favoriteWord = '') => {
   name = name.toLowerCase();
-  const year = String(birthYear || '2004');
-  const day = '14'; // Mock default day
-  const mon = '03'; // Mock default month
-  const dob = `${year}-${mon}-${day}`;
+  const dobParts = (dob || '2004-03-14').split('-');
+  const year = dobParts[0] || '2004';
+  const mon = dobParts[1] || '03';
+  const day = dobParts[2] || '14';
   college = college.toLowerCase();
   const fav = favoriteWord.toLowerCase();
 

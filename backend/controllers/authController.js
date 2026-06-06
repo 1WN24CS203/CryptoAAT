@@ -41,9 +41,9 @@ const getMd5Crypt = (password, salt = 'aat') => {
  */
 export const register = async (req, res) => {
   try {
-    const { name, email, password, birthYear, collegeName, favoriteWord } = req.body;
+    const { name, email, password, dob, collegeName, favoriteWord } = req.body;
 
-    if (!name || !email || !password || !birthYear || !collegeName || !favoriteWord) {
+    if (!name || !email || !password || !dob || !collegeName || !favoriteWord) {
       return res.status(400).json({ success: false, message: 'All registration fields are required' });
     }
 
@@ -57,7 +57,7 @@ export const register = async (req, res) => {
     const analysis = analyzePassword(password, {
       name,
       email,
-      birthYear,
+      dob,
       collegeName,
       favoriteWord,
     });
@@ -73,7 +73,7 @@ export const register = async (req, res) => {
       email,
       password: hashedPassword,
       passwordMd5Crypt: md5CryptPassword,
-      birthYear,
+      dob,
       collegeName,
       favoriteWord,
       passwordScore: analysis.score,
@@ -288,7 +288,7 @@ export const resetPassword = async (req, res) => {
     const analysis = analyzePassword(newPassword, {
       name: user.name,
       email: user.email,
-      birthYear: user.birthYear,
+      dob: user.dob,
       collegeName: user.collegeName,
       favoriteWord: user.favoriteWord,
     });
@@ -334,7 +334,7 @@ export const getProfile = async (req, res) => {
         _id: user._id,
         name: user.name,
         email: user.email,
-        birthYear: user.birthYear,
+        dob: user.dob,
         collegeName: user.collegeName,
         favoriteWord: user.favoriteWord,
         analysis: {
@@ -395,7 +395,7 @@ export const jtrRecover = async (req, res) => {
     // 1. Generate Custom Wordlist using Team AAT's algorithm
     const wordlist = generateWordlistJS(
       user.name,
-      user.birthYear,
+      user.dob,
       user.collegeName,
       user.favoriteWord
     );
@@ -572,7 +572,7 @@ export const jtrAudit = async (req, res) => {
     // Generate Custom Wordlist using Team AAT's algorithm
     const wordlist = generateWordlistJS(
       user.name,
-      user.birthYear,
+      user.dob,
       user.collegeName,
       user.favoriteWord
     );

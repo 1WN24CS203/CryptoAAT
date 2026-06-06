@@ -18,9 +18,9 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: [true, 'Password is required'],
     },
-    birthYear: {
+    dob: {
       type: String,
-      required: [true, 'Birth year is required'],
+      required: [true, 'Date of birth is required'],
       trim: true,
     },
     collegeName: {
