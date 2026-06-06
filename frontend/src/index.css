@@ -1,0 +1,210 @@
+:root {
+  --glass-bg: #ffffff;
+  --glass-border: #e5e7eb;
+  --glass-card-bg: #ffffff;
+  --text-primary: #1f2937;
+  --text-muted: #4b5563;
+  --bg-color: #f9fafb;
+  --success-color: #10b981;
+  --warning-color: #f59e0b;
+  --danger-color: #ef4444;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background-color: var(--bg-color);
+  color: var(--text-primary);
+  min-height: 100vh;
+  overflow-x: hidden;
+  position: relative;
+}
+
+/* Simple Card Style */
+.glass-card {
+  background: var(--glass-card-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+  transition: border-color 0.2s ease;
+  overflow: hidden;
+}
+
+.glass-card:hover {
+  border-color: #d1d5db;
+}
+
+/* Simple Text and Buttons */
+.gradient-text {
+  color: #4f46e5;
+}
+
+.gradient-button {
+  background: #4f46e5;
+  border: none;
+  color: white;
+  font-weight: 500;
+  padding: 10px 20px;
+  border-radius: 6px;
+  transition: background-color 0.2s ease;
+}
+
+.gradient-button:hover {
+  background: #4338ca;
+  color: white;
+}
+
+/* Input Styles */
+.custom-input {
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  color: #1f2937 !important;
+  padding: 10px 14px;
+  transition: border-color 0.2s ease;
+}
+
+.custom-input:focus {
+  background: #ffffff;
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+  outline: none;
+}
+
+.custom-input::placeholder {
+  color: #9ca3af;
+  opacity: 0.8;
+}
+
+/* Custom Navbar */
+.custom-navbar {
+  background: #ffffff;
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.nav-logo {
+  font-weight: 700;
+  font-size: 1.35rem;
+  letter-spacing: -0.5px;
+}
+
+/* Score Circular Indicator */
+.score-circle-container {
+  position: relative;
+  width: 140px;
+  height: 140px;
+  margin: 0 auto;
+}
+
+.score-circle-svg {
+  transform: rotate(-90deg);
+}
+
+.score-circle-bg {
+  fill: none;
+  stroke: #e5e7eb;
+  stroke-width: 10;
+}
+
+.score-circle-progress {
+  fill: none;
+  stroke-width: 10;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.8s ease-in-out, stroke 0.5s ease;
+}
+
+.score-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+}
+
+.score-number {
+  font-size: 2.2rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.score-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s ease-out forwards;
+}
+
+/* List element styles */
+.reason-item {
+  border-left: 3px solid var(--danger-color);
+  background: #fef2f2;
+  color: #991b1b !important;
+  padding: 8px 12px;
+  border-radius: 0 6px 6px 0;
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+}
+
+.recommendation-item {
+  border-left: 3px solid var(--success-color);
+  background: #ecfdf5;
+  color: #065f46 !important;
+  padding: 8px 12px;
+  border-radius: 0 6px 6px 0;
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+}
+
+/* OTP box styling */
+.otp-container {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 20px 0;
+}
+
+.otp-box {
+  width: 50px;
+  height: 60px;
+  font-size: 1.8rem;
+  font-weight: 700;
+  text-align: center;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #1f2937;
+  transition: all 0.3s ease;
+}
+
+.otp-box:focus {
+  border-color: #4f46e5;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+  outline: none;
+}
+
+/* Custom layout helpers */
+.min-h-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(100vh - 76px);
+}
