@@ -14,6 +14,7 @@ function JtrRecovery() {
   const [logs, setLogs] = useState([]);
   const [visibleLogs, setVisibleLogs] = useState([]);
   const [crackedPassword, setCrackedPassword] = useState('');
+  const [winner, setWinner] = useState('');
   const [timeTaken, setTimeTaken] = useState('0.0');
   const [error, setError] = useState('');
   const [permission, setPermission] = useState(false);
@@ -79,8 +80,10 @@ function JtrRecovery() {
         setTimeTaken(data.timeTaken || '0.0');
         if (data.cracked) {
           setCrackedPassword(data.password);
+          setWinner(data.winner || '');
         } else {
           setCrackedPassword('');
+          setWinner('');
         }
       } else {
         setError(data.message || 'Audit run failed.');
@@ -186,7 +189,7 @@ function JtrRecovery() {
               </div>
               <h3 className="h4 fw-bold text-dark mb-2">Credential Cracked & Recovered!</h3>
               <p className="text-muted mx-auto" style={{ maxWidth: '500px' }}>
-                Your password was successfully recovered in <strong>{timeTaken}s</strong> using our custom targeted wordlist. This indicates your password is <strong>highly vulnerable</strong>.
+                Your password was successfully recovered in <strong>{timeTaken}s</strong> using the <strong>{winner || 'custom targeted wordlist'}</strong> attack. This indicates your password is <strong>highly vulnerable</strong>.
               </p>
               
               <div className="bg-light border rounded p-3 my-4">

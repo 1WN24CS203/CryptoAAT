@@ -120,6 +120,18 @@ def generate_wordlist(name, dob, college, favourite_word,
         fav+college, college+fav,
     }
 
+    # Add common fallback weak passwords to bases so they get full treatment
+    common_weak = [
+        '123456', '12345678', '123456789', 'password', 'admin', 'welcome', 
+        'qwerty', 'pass123', 'letmein', '12345', '1234567', 'password123',
+        'password1234', 'admin123', 'admin1234', 'welcome123', 'welcome1',
+        'iloveyou', 'princess', 'monkey', 'trustno1', 'shadow', 'superman'
+    ]
+    for cw in common_weak:
+        bases.add(cw)
+        bases.add(cw.upper())
+        bases.add(cw.capitalize())
+
     # Add all shortforms to bases
     for sf in unique_name_shortforms:
         bases.add(sf)
@@ -212,6 +224,11 @@ def generate_wordlist(name, dob, college, favourite_word,
         # prefix + base
         for pre in prefixes:
             wordlist.add(pre + base)
+
+        # prefix + base + suffix (combines prefixes, bases, and suffixes to generate > 10k custom targeted combinations)
+        for pre in prefixes:
+            for suf in suffixes:
+                wordlist.add(pre + base + suf)
 
         # leet speak style 1 (light substitutions)
         leet1 = (base.replace('a','@').replace('e','3')
