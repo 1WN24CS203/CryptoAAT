@@ -25,12 +25,105 @@ const runCommand = (cmd) => {
   });
 };
 
-// Generates a local deterministic md5crypt-compatible hash of a password
+// Generates a standard FreeBSD-compatible md5crypt ($1$) hash of a password
 const getMd5Crypt = (password, salt = 'aat') => {
   return new Promise((resolve) => {
-    const hash = crypto.createHash('md5').update(password + salt).digest('base64')
-      .replace(/\+/g, '.').replace(/=/g, '').substring(0, 22);
-    resolve(`$1$${salt}$${hash}`);
+    // Clean salt: up to 8 characters, only before first '$'
+    if (salt.startsWith("$1$")) salt = salt.slice(3);
+    const pos = salt.indexOf("$");
+    if (pos !== -1) salt = salt.slice(0, pos);
+    salt = salt.slice(0, 8);
+
+    const key = password;
+    
+    // Start digest A
+    let ctx = crypto.createHash('md5');
+    ctx.update(key);
+    ctx.update("$1$");
+    ctx.update(salt);
+
+    // Start digest B
+    let ctx1 = crypto.createHash('md5');
+    ctx1.update(key);
+    ctx1.update(salt);
+    ctx1.update(key);
+    let final = ctx1.digest();
+
+    // Add B's output to A
+    let pl = key.length;
+    while (pl > 0) {
+      ctx.update(final.slice(0, Math.min(pl, 16)));
+      pl -= 16;
+    }
+
+    // For each bit of the password length, add 0 or the first character of the password
+    for (let i = key.length; i > 0; i >>= 1) {
+      if ((i & 1) !== 0) {
+        ctx.update(Buffer.from([0]));
+      } else {
+        ctx.update(Buffer.from([key.charCodeAt(0)]));
+      }
+    }
+
+    final = ctx.digest();
+
+    // 1000 rounds of MD5
+    for (let i = 0; i < 1000; i++) {
+      let ctx2 = crypto.createHash('md5');
+      if ((i & 1) !== 0) {
+        ctx2.update(key);
+      } else {
+        ctx2.update(final);
+      }
+
+      if (i % 3 !== 0) {
+        ctx2.update(salt);
+      }
+
+      if (i % 7 !== 0) {
+        ctx2.update(key);
+      }
+
+      if ((i & 1) !== 0) {
+        ctx2.update(final);
+      } else {
+        ctx2.update(key);
+      }
+      final = ctx2.digest();
+    }
+
+    // Base64 encoding using a custom permutation
+    const BASE64_ALPHABET = "./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+    const toBase64 = (v, n) => {
+      let s = "";
+      while (--n >= 0) {
+        s += BASE64_ALPHABET.charAt(v & 0x3f);
+        v >>= 6;
+      }
+      return s;
+    };
+
+    let result = "$1$" + salt + "$";
+    
+    const val = (((final[0] << 16) | (final[6] << 8) | final[12]) >>> 0);
+    result += toBase64(val, 4);
+
+    const val2 = (((final[1] << 16) | (final[7] << 8) | final[13]) >>> 0);
+    result += toBase64(val2, 4);
+
+    const val3 = (((final[2] << 16) | (final[8] << 8) | final[14]) >>> 0);
+    result += toBase64(val3, 4);
+
+    const val4 = (((final[3] << 16) | (final[9] << 8) | final[15]) >>> 0);
+    result += toBase64(val4, 4);
+
+    const val5 = (((final[4] << 16) | (final[10] << 8) | final[5]) >>> 0);
+    result += toBase64(val5, 4);
+
+    const val6 = (final[11] >>> 0);
+    result += toBase64(val6, 2);
+
+    resolve(result);
   });
 };
 
@@ -371,6 +464,450 @@ export const testAnalyzer = async (req, res) => {
 };
 
 
+export const ensureStandardDictionary = () => {
+  const dictPath = path.join(process.cwd(), 'rockyou.txt');
+  if (!fs.existsSync(dictPath) || fs.statSync(dictPath).size === 0) {
+    // Generate a curated list of top 2000 common passwords from rockyou/standard lists
+    const commonPasswords = [
+      '123456', 'password', '12345678', '123456789', '1234', '12345',
+      'qwerty', '1234567', 'welcome', '111111', '123123', 'admin',
+      'letmein', 'password123', '1234567890', 'princess', 'iloveyou',
+      'sunshine', 'monkey', 'charlie', 'daniel', 'jordan', 'superman',
+      'shadow', 'killer', 'soccer', 'football', 'baseball', 'hockey',
+      'cheesecake', 'cookie', 'butter', 'coffee', 'chocolate', 'mustang',
+      'trustno1', 'welcome1', 'admin123', 'qwertyuiop', 'pass123'
+    ];
+    
+    const names = ['alex', 'ashley', 'andrew', 'brandon', 'brian', 'chris', 'cody', 'david', 'dylan', 'emily', 'eric', 'haley', 'jacob', 'james', 'jessica', 'john', 'justin', 'kyle', 'lauren', 'matthew', 'megan', 'michael', 'nathan', 'nicholas', 'nicole', 'rachel', 'ryan', 'sarah', 'taylor', 'tyler', 'william', 'zachary'];
+    
+    const extra = [];
+    names.forEach(name => {
+      extra.push(name);
+      extra.push(name.charAt(0).toUpperCase() + name.slice(1));
+      extra.push(name + '123');
+      extra.push(name + '1');
+      extra.push(name + '2020');
+      extra.push(name + '2021');
+      extra.push(name + '2022');
+      extra.push(name + '2023');
+      extra.push(name + '2024');
+      extra.push(name + '2025');
+      extra.push(name + '2026');
+    });
+    
+    for (let i = 0; i < 300; i++) {
+      extra.push(i.toString());
+      extra.push('password' + i);
+      extra.push('welcome' + i);
+      extra.push('admin' + i);
+      extra.push('pass' + i);
+    }
+    
+    const finalSet = new Set([...commonPasswords, ...extra]);
+    fs.writeFileSync(dictPath, Array.from(finalSet).join('\n'));
+    console.log(`[+] Initialized fallback standard dictionary with ${finalSet.size} entries.`);
+  }
+};
+
+const runJSConcurrentCracking = async (targetHash, customWordlist, standardWordlist, formatName) => {
+  let isFinished = false;
+  let crackedPassword = null;
+  let winner = null;
+  const terminalLogs = [];
+
+  terminalLogs.push(`[*] Launching JS Native Parallel Solvers...`);
+
+  // Shared statistics
+  let customChecked = 0;
+  let standardChecked = 0;
+  let bruteChecked = 0;
+
+  // Alphabet for brute force
+  const bruteCharset = 'abcdefghijklmnopqrstuvwxyz0123456789!@#$';
+  
+  const verifyCandidate = async (password) => {
+    if (formatName === 'md5crypt') {
+      const candHash = await getMd5Crypt(password, targetHash);
+      return candHash === targetHash;
+    } else {
+      return await bcrypt.compare(password, targetHash);
+    }
+  };
+
+  // 1. Custom Dictionary Loop
+  const runCustomAttack = () => {
+    return new Promise((resolve) => {
+      let index = 0;
+      const batchSize = formatName === 'md5crypt' ? 20 : 1;
+
+      const checkNext = async () => {
+        if (isFinished) {
+          resolve();
+          return;
+        }
+
+        const end = Math.min(index + batchSize, customWordlist.length);
+        for (let i = index; i < end; i++) {
+          const cand = customWordlist[i];
+          customChecked++;
+          
+          if (customChecked % 100 === 0 || i === customWordlist.length - 1) {
+            terminalLogs.push(`[~] [Custom Dictionary] Checked ${customChecked}/${customWordlist.length} candidates...`);
+          }
+
+          const match = await verifyCandidate(cand);
+          if (match) {
+            isFinished = true;
+            crackedPassword = cand;
+            winner = 'Custom Dictionary';
+            resolve();
+            return;
+          }
+        }
+
+        index = end;
+        if (index >= customWordlist.length) {
+          terminalLogs.push(`[-] [Custom Dictionary] Wordlist exhausted. Checked ${customChecked} candidates.`);
+          resolve();
+        } else {
+          setImmediate(checkNext);
+        }
+      };
+      
+      terminalLogs.push(`[+] [Custom Dictionary] Started check (candidates: ${customWordlist.length}).`);
+      setImmediate(checkNext);
+    });
+  };
+
+  // 2. Standard Dictionary Loop
+  const runStandardAttack = () => {
+    return new Promise((resolve) => {
+      let index = 0;
+      const batchSize = formatName === 'md5crypt' ? 20 : 1;
+
+      const checkNext = async () => {
+        if (isFinished) {
+          resolve();
+          return;
+        }
+
+        const end = Math.min(index + batchSize, standardWordlist.length);
+        for (let i = index; i < end; i++) {
+          const cand = standardWordlist[i];
+          standardChecked++;
+
+          if (standardChecked % 500 === 0 || i === standardWordlist.length - 1) {
+            terminalLogs.push(`[~] [Standard Dictionary] Checked ${standardChecked}/${standardWordlist.length} candidates...`);
+          }
+
+          const match = await verifyCandidate(cand);
+          if (match) {
+            isFinished = true;
+            crackedPassword = cand;
+            winner = 'Standard Dictionary';
+            resolve();
+            return;
+          }
+        }
+
+        index = end;
+        if (index >= standardWordlist.length) {
+          terminalLogs.push(`[-] [Standard Dictionary] Wordlist exhausted. Checked ${standardChecked} candidates.`);
+          resolve();
+        } else {
+          setImmediate(checkNext);
+        }
+      };
+
+      terminalLogs.push(`[+] [Standard Dictionary] Started check (candidates: ${standardWordlist.length}).`);
+      setImmediate(checkNext);
+    });
+  };
+
+  // 3. Brute Force Loop
+  const runBruteForceAttack = () => {
+    return new Promise((resolve) => {
+      let currentCounter = 0;
+      const batchSize = formatName === 'md5crypt' ? 10 : 1;
+      
+      const getBruteForcePassword = (n) => {
+        let result = '';
+        let temp = n;
+        while (temp >= 0) {
+          result = bruteCharset[temp % bruteCharset.length] + result;
+          temp = Math.floor(temp / bruteCharset.length) - 1;
+        }
+        return result;
+      };
+
+      const checkNext = async () => {
+        if (isFinished) {
+          resolve();
+          return;
+        }
+
+        const maxBruteAttempts = formatName === 'md5crypt' ? 20000 : 100;
+
+        const end = Math.min(currentCounter + batchSize, maxBruteAttempts);
+        for (let i = currentCounter; i < end; i++) {
+          const cand = getBruteForcePassword(i);
+          bruteChecked++;
+
+          if (bruteChecked % 200 === 0 || (formatName === 'bcrypt' && bruteChecked % 10 === 0)) {
+            terminalLogs.push(`[~] [Brute Force] Tried combinations up to "${cand}" (checked ${bruteChecked})...`);
+          }
+
+          const match = await verifyCandidate(cand);
+          if (match) {
+            isFinished = true;
+            crackedPassword = cand;
+            winner = 'Brute Force';
+            resolve();
+            return;
+          }
+        }
+
+        currentCounter = end;
+        if (currentCounter >= maxBruteAttempts) {
+          terminalLogs.push(`[-] [Brute Force] Safety limit reached. Checked ${bruteChecked} combinations.`);
+          resolve();
+        } else {
+          setImmediate(checkNext);
+        }
+      };
+
+      terminalLogs.push(`[+] [Brute Force] Started incremental check (charset size: ${bruteCharset.length}).`);
+      setImmediate(checkNext);
+    });
+  };
+
+  // Race all three attacks concurrently
+  await Promise.all([runCustomAttack(), runStandardAttack(), runBruteForceAttack()]);
+
+  return { crackedPassword, winner, terminalLogs };
+};
+
+const runJTRConcurrentCracking = (targetHash, formatName) => {
+  return new Promise(async (resolve) => {
+    let isFinished = false;
+    let crackedPassword = null;
+    let winner = null;
+    const terminalLogs = [];
+
+    const customPot = 'custom.pot';
+    const standardPot = 'standard.pot';
+    const brutePot = 'brute.pot';
+
+    const customPotPath = path.join(process.cwd(), customPot);
+    const standardPotPath = path.join(process.cwd(), standardPot);
+    const brutePotPath = path.join(process.cwd(), brutePot);
+
+    const customSession = 'custom';
+    const standardSession = 'standard';
+    const bruteSession = 'brute';
+
+    const cleanSessionFiles = (sessionName) => {
+      try {
+        const recFile = path.join(process.cwd(), `${sessionName}.rec`);
+        if (fs.existsSync(recFile)) fs.unlinkSync(recFile);
+      } catch (e) {}
+    };
+
+    [customPotPath, standardPotPath, brutePotPath].forEach(p => {
+      try {
+        if (fs.existsSync(p)) fs.unlinkSync(p);
+      } catch (e) {}
+    });
+    [customSession, standardSession, bruteSession].forEach(cleanSessionFiles);
+
+    terminalLogs.push(`[*] Launching John the Ripper Parallel Attacks...`);
+
+    const attacks = [
+      {
+        name: 'Custom Dictionary',
+        cmd: `john --format=${formatName} --pot=${customPot} --session=${customSession} --wordlist=custom_wordlist.txt hash.txt`,
+        pot: customPot,
+        session: customSession
+      },
+      {
+        name: 'Standard Dictionary',
+        cmd: `john --format=${formatName} --pot=${standardPot} --session=${standardSession} --wordlist=rockyou.txt hash.txt`,
+        pot: standardPot,
+        session: standardSession
+      },
+      {
+        name: 'Brute Force',
+        cmd: `john --format=${formatName} --pot=${brutePot} --session=${bruteSession} --incremental hash.txt`,
+        pot: brutePot,
+        session: bruteSession
+      }
+    ];
+
+    const processes = [];
+
+    attacks.forEach(attack => {
+      terminalLogs.push(`[+] [JTR ${attack.name}] Started command: $ ${attack.cmd}`);
+      
+      const proc = exec(attack.cmd, (error, stdout, stderr) => {
+        proc.exited = true;
+        if (error && error.signal === 'SIGTERM') {
+          return;
+        }
+        if (stdout) {
+          terminalLogs.push(`[JTR ${attack.name} STDOUT] ${stdout.trim()}`);
+        }
+        if (stderr) {
+          const cleanStderr = stderr.trim();
+          if (cleanStderr && !cleanStderr.includes('Command line') && !cleanStderr.includes('Press Ctrl-C')) {
+            terminalLogs.push(`[JTR ${attack.name}] ${cleanStderr}`);
+          }
+        }
+      });
+      
+      proc.exited = false;
+      processes.push({ proc, ...attack });
+    });
+
+    const intervalId = setInterval(async () => {
+      if (isFinished) {
+        clearInterval(intervalId);
+        return;
+      }
+
+      for (const attack of attacks) {
+        const potFilePath = path.join(process.cwd(), attack.pot);
+        if (fs.existsSync(potFilePath) && fs.statSync(potFilePath).size > 0) {
+          const showCmd = `john --show --format=${formatName} --pot=${attack.pot} hash.txt`;
+          const showResult = await runCommand(showCmd);
+          if (showResult.stdout && showResult.stdout.includes(':')) {
+            crackedPassword = showResult.stdout.split(':')[1].trim().split('\n')[0];
+            if (crackedPassword) {
+              isFinished = true;
+              winner = attack.name;
+              terminalLogs.push(`\n[+] [JTR ${attack.name}] CRACK SUCCESSFUL! Password found in ${attack.pot}`);
+              clearInterval(intervalId);
+              
+              processes.forEach(p => {
+                try {
+                  p.proc.kill();
+                } catch (err) {}
+              });
+
+              resolve({ crackedPassword, winner, terminalLogs });
+              return;
+            }
+          }
+        }
+      }
+
+      const allExited = processes.every(p => p.proc.exited);
+      if (allExited) {
+        clearInterval(intervalId);
+        terminalLogs.push(`\n[-] All JTR parallel processes have exited.`);
+        resolve({ crackedPassword: null, winner: null, terminalLogs });
+      }
+    }, 200);
+
+    setTimeout(() => {
+      if (!isFinished) {
+        isFinished = true;
+        clearInterval(intervalId);
+        terminalLogs.push(`\n[!] JTR attack timeout reached (25s limit).`);
+        processes.forEach(p => {
+          try {
+            p.proc.kill();
+          } catch (err) {}
+        });
+        resolve({ crackedPassword: null, winner: null, terminalLogs });
+      }
+    }, 25000);
+  });
+};
+
+const runConcurrentCrackingSuite = async (user, targetHash) => {
+  const startTime = Date.now();
+  let crackedPassword = null;
+  let winner = null;
+  let terminalLogs = [];
+  let usedRealJohn = false;
+
+  const formatName = targetHash.startsWith('$1$') ? 'md5crypt' : 'bcrypt';
+
+  // 1. Setup Custom Wordlist
+  const customWordlist = generateWordlistJS(
+    user.name,
+    user.dob,
+    user.collegeName,
+    user.favoriteWord
+  );
+  const customWordlistPath = path.join(process.cwd(), 'custom_wordlist.txt');
+  fs.writeFileSync(customWordlistPath, customWordlist.join('\n'));
+
+  // 2. Setup Standard Dictionary (rockyou)
+  ensureStandardDictionary();
+  const rockyouPath = path.join(process.cwd(), 'rockyou.txt');
+
+  // 3. Save target hash to disk
+  const hashPath = path.join(process.cwd(), 'hash.txt');
+  fs.writeFileSync(hashPath, targetHash + '\n');
+
+  terminalLogs.push(`[+] Wordlist generated : ${customWordlist.length} candidate passwords`);
+  terminalLogs.push(`[+] Saved custom wordlist to : custom_wordlist.txt`);
+  terminalLogs.push(`[+] Stored target hash       : hash.txt (${formatName})`);
+
+  try {
+    // Check JTR binary availability
+    const checkResult = await runCommand('john');
+    if (checkResult.error && (checkResult.error.message.includes('not found') || checkResult.error.message.includes('not recognized') || checkResult.error.code === 127)) {
+      throw new Error('JTR binary not found');
+    }
+
+    usedRealJohn = true;
+    const crackResult = await runJTRConcurrentCracking(targetHash, formatName);
+    crackedPassword = crackResult.crackedPassword;
+    winner = crackResult.winner;
+    terminalLogs = [...terminalLogs, ...crackResult.terminalLogs];
+  } catch (e) {
+    usedRealJohn = false;
+    terminalLogs.push(`[!] JTR binary execution skipped (not found in system PATH or failed to start).`);
+    terminalLogs.push(`[*] Falling back to JavaScript Cryptographic engine (concurrent loops)...`);
+
+    const dictContent = fs.readFileSync(rockyouPath, 'utf8');
+    const standardWordlist = dictContent.split(/\r?\n/).filter(Boolean).slice(0, 50000);
+
+    const crackResult = await runJSConcurrentCracking(targetHash, customWordlist, standardWordlist, formatName);
+    crackedPassword = crackResult.crackedPassword;
+    winner = crackResult.winner;
+    terminalLogs = [...terminalLogs, ...crackResult.terminalLogs];
+  }
+
+  const endTime = Date.now();
+  const timeTakenSec = ((endTime - startTime) / 1000).toFixed(2);
+
+  // Clean up JTR artifacts
+  const filesToCleanup = [
+    'hash.txt',
+    'custom.pot', 'standard.pot', 'brute.pot',
+    'custom.rec', 'standard.rec', 'brute.rec',
+    'john.rec', 'john.pot'
+  ];
+  filesToCleanup.forEach(file => {
+    try {
+      const p = path.join(process.cwd(), file);
+      if (fs.existsSync(p)) fs.unlinkSync(p);
+    } catch (err) {}
+  });
+
+  return {
+    cracked: !!crackedPassword,
+    password: crackedPassword,
+    winner,
+    timeTaken: timeTakenSec,
+    logs: terminalLogs,
+    usedRealJohn
+  };
+};
+
 export const jtrRecover = async (req, res) => {
   try {
     const { email, otp } = req.body;
@@ -392,164 +929,25 @@ export const jtrRecover = async (req, res) => {
       return res.status(400).json({ success: false, message: 'OTP code has expired' });
     }
 
-    // 1. Generate Custom Wordlist using Team AAT's algorithm
-    const wordlist = generateWordlistJS(
-      user.name,
-      user.dob,
-      user.collegeName,
-      user.favoriteWord
-    );
-
-    // Save custom wordlist to disk for user inspection & John execution
-    const wordlistPath = path.join(process.cwd(), 'custom_wordlist.txt');
-    fs.writeFileSync(wordlistPath, wordlist.join('\n'));
-
-    // Save target hash to disk (Prefer md5crypt for fast crack demo, fallback to bcrypt)
     const targetHash = user.passwordMd5Crypt || user.password;
-    const hashPath = path.join(process.cwd(), 'hash.txt');
-    fs.writeFileSync(hashPath, targetHash);
+    
+    console.log(`\n=== JTR RECOVERY AUDIT RUNNING (CONCURRENT RACES) ===`);
+    console.log('User Email:', user.email);
+    console.log('Format detected:', targetHash.startsWith('$1$') ? 'md5crypt' : 'bcrypt');
+    console.log('Target hash value:', targetHash);
+    console.log('====================================================\n');
 
-    try {
-      console.log('\n=== JTR RECOVERY AUDIT RUNNING ===');
-      console.log('User Email:', user.email);
-      console.log('Cached MD5crypt exists:', !!user.passwordMd5Crypt);
-      console.log('Format detected:', targetHash.startsWith('$1$') ? 'md5crypt' : 'bcrypt');
-      console.log('Target hash value:', targetHash);
-      console.log('Wordlist length:', wordlist.length);
-      console.log('===================================\n');
+    const result = await runConcurrentCrackingSuite(user, targetHash);
 
-      const startTime = Date.now();
-      let crackedPassword = null;
-      let terminalLogs = [];
-      let usedRealJohn = false;
-
-      const formatName = targetHash.startsWith('$1$') ? 'md5crypt' : 'bcrypt';
-
-      terminalLogs.push(`[+] Wordlist generated : ${wordlist.length} candidate passwords`);
-      terminalLogs.push(`[+] Saved wordlist to  : custom_wordlist.txt`);
-      terminalLogs.push(`[+] Stored target hash : hash.txt (${formatName})`);
-      terminalLogs.push(`\n[*] Preparing multi-attack execution suite...`);
-      terminalLogs.push(`[*] Attack 1: Targeted Custom Wordlist Attack (Team AAT algorithm)...`);
-      terminalLogs.push(`[*] Attack 2: John the Ripper Single-Crack rules (GECOS info)...`);
-      terminalLogs.push(`[*] Attack 3: Wordlist Dictionary Attack (standard dict)...`);
-      terminalLogs.push(`[*] Attack 4: Incremental Brute Force Attack...`);
-      terminalLogs.push(`\n[*] Launching Attack 1: Targeted wordlist search...`);
-      terminalLogs.push(`$ john --format=${formatName} --wordlist=custom_wordlist.txt hash.txt`);
-
-      // Try running John the Ripper binary
-      try {
-        // Clear previous pot file if any to force re-cracking
-        const potPath = path.join(process.cwd(), 'john.pot');
-        if (fs.existsSync(potPath)) {
-          fs.unlinkSync(potPath);
-        }
-
-        // Execute command
-        const johnResult = await runCommand(`john --format=${formatName} --wordlist=custom_wordlist.txt hash.txt`);
-        
-        // If no error, get the show command output
-        if (!johnResult.error) {
-          const johnShow = await runCommand(`john --show --format=${formatName} hash.txt`);
-          if (johnShow.stdout && johnShow.stdout.includes(':')) {
-            crackedPassword = johnShow.stdout.split(':')[1].trim().split('\n')[0];
-            usedRealJohn = true;
-            
-            if (johnResult.stdout) {
-              terminalLogs.push(johnResult.stdout.trim());
-            }
-            terminalLogs.push(johnShow.stdout.trim());
-          }
-        }
-      } catch (e) {
-        // Binary execution failed, will fall back to JS simulation
-      }
-
-      // JS native solver fallback (if binary is missing or fails to crack)
-      if (!crackedPassword) {
-        terminalLogs.push(`[!] JTR binary execution skipped (not found in system PATH).`);
-        
-        if (targetHash.startsWith('$1$')) {
-          terminalLogs.push(`[*] Falling back to JavaScript Cryptographic engine (MD5crypt compare)...`);
-          
-          for (let i = 0; i < wordlist.length; i++) {
-            const candidate = wordlist[i];
-            const candHash = await getMd5Crypt(candidate);
-            if (candHash === targetHash) {
-              crackedPassword = candidate;
-              break;
-            }
-          }
-        } else {
-          terminalLogs.push(`[*] Falling back to JavaScript Cryptographic engine (Bcrypt compare)...`);
-          for (let i = 0; i < wordlist.length; i++) {
-            const candidate = wordlist[i];
-            const isMatch = await bcrypt.compare(candidate, user.password);
-            if (isMatch) {
-              crackedPassword = candidate;
-              break;
-            }
-          }
-        }
-      }
-
-      const endTime = Date.now();
-      const timeTakenSec = ((endTime - startTime) / 1000).toFixed(2);
-
-      if (crackedPassword) {
-        terminalLogs.push(`\n[+] Attack 1 SUCCESSFUL: Password cracked!`);
-        terminalLogs.push(`[+] Aborting other attack tasks to save CPU cycles.`);
-        terminalLogs.push(`\nLoaded 1 password hash (${formatName})`);
-        terminalLogs.push(`Cracked hash value: ${targetHash}`);
-        terminalLogs.push(`Plaintext password recovered: "${crackedPassword}"`);
-        terminalLogs.push(`\n[+] 1 password hash cracked, 0 left`);
-        terminalLogs.push(`[+] Recovery completed successfully in ${timeTakenSec} seconds.`);
-        
-
-        // Log audit success (emailing plaintext recovered password is removed for security)
-        console.log(`[+] Recovery successful: Password recovered for user ${user.email} (Email notification skipped for safety)`);
-
-
-        res.json({
-          success: true,
-          cracked: true,
-          password: crackedPassword,
-          timeTaken: timeTakenSec,
-          logs: terminalLogs,
-          usedRealJohn
-        });
-      } else {
-        terminalLogs.push(`\n[-] Attack 1: Wordlist exhausted. 0 passwords cracked.`);
-        terminalLogs.push(`[*] Launching Attack 2: Single-Crack mode...`);
-        terminalLogs.push(`$ john --format=${formatName} --single hash.txt`);
-        terminalLogs.push(`[-] Attack 2: GECOS rules exhausted. 0 passwords cracked.`);
-        terminalLogs.push(`[*] Launching Attack 3 & 4 (Dictionary & Brute-Force)...`);
-        terminalLogs.push(`[-] JTR exhausted all attack options. Password is secure.`);
-        terminalLogs.push(`[-] Audit finished in ${timeTakenSec} seconds.`);
-        
-        res.json({
-          success: true,
-          cracked: false,
-          timeTaken: timeTakenSec,
-          logs: terminalLogs,
-          usedRealJohn
-        });
-      }
-    } finally {
-      try {
-        if (fs.existsSync(wordlistPath)) {
-          fs.unlinkSync(wordlistPath);
-        }
-        if (fs.existsSync(hashPath)) {
-          fs.unlinkSync(hashPath);
-        }
-        const potPath = path.join(process.cwd(), 'john.pot');
-        if (fs.existsSync(potPath)) {
-          fs.unlinkSync(potPath);
-        }
-      } catch (cleanupError) {
-        console.error('Error cleaning up JTR temp files:', cleanupError);
-      }
-    }
+    res.json({
+      success: true,
+      cracked: result.cracked,
+      password: result.password,
+      winner: result.winner,
+      timeTaken: result.timeTaken,
+      logs: result.logs,
+      usedRealJohn: result.usedRealJohn
+    });
 
   } catch (error) {
     console.error('JTR Recovery Error:', error);
@@ -557,11 +955,6 @@ export const jtrRecover = async (req, res) => {
   }
 };
 
-/**
- * @desc    Run John the Ripper (JTR) audit on current logged-in user password
- * @route   POST /api/auth/jtr-audit
- * @access  Private
- */
 export const jtrAudit = async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
@@ -569,155 +962,25 @@ export const jtrAudit = async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
-    // Generate Custom Wordlist using Team AAT's algorithm
-    const wordlist = generateWordlistJS(
-      user.name,
-      user.dob,
-      user.collegeName,
-      user.favoriteWord
-    );
-
-    // Save custom wordlist to disk for user inspection & John execution
-    const wordlistPath = path.join(process.cwd(), 'custom_wordlist.txt');
-    fs.writeFileSync(wordlistPath, wordlist.join('\n'));
-
-    // Save target hash to disk
     const targetHash = user.passwordMd5Crypt || user.password;
-    const hashPath = path.join(process.cwd(), 'hash.txt');
-    fs.writeFileSync(hashPath, targetHash);
 
-    try {
-      console.log('\n=== JTR SECURITY PROFILE AUDIT RUNNING ===');
-      console.log('User Email:', user.email);
-      console.log('Cached MD5crypt exists:', !!user.passwordMd5Crypt);
-      console.log('Format detected:', targetHash.startsWith('$1$') ? 'md5crypt' : 'bcrypt');
-      console.log('Target hash value:', targetHash);
-      console.log('Wordlist length:', wordlist.length);
-      console.log('==========================================\n');
+    console.log(`\n=== JTR SECURITY PROFILE AUDIT RUNNING (CONCURRENT RACES) ===`);
+    console.log('User Email:', user.email);
+    console.log('Format detected:', targetHash.startsWith('$1$') ? 'md5crypt' : 'bcrypt');
+    console.log('Target hash value:', targetHash);
+    console.log('============================================================\n');
 
-      const startTime = Date.now();
-      let crackedPassword = null;
-      let terminalLogs = [];
-      let usedRealJohn = false;
+    const result = await runConcurrentCrackingSuite(user, targetHash);
 
-      const formatName = targetHash.startsWith('$1$') ? 'md5crypt' : 'bcrypt';
-
-      terminalLogs.push(`[+] Wordlist generated : ${wordlist.length} candidate passwords`);
-      terminalLogs.push(`[+] Saved wordlist to  : custom_wordlist.txt`);
-      terminalLogs.push(`[+] Stored target hash : hash.txt (${formatName})`);
-      terminalLogs.push(`\n[*] Preparing multi-attack execution suite...`);
-      terminalLogs.push(`[*] Attack 1: Targeted Custom Wordlist Attack (Team AAT)...`);
-      terminalLogs.push(`[*] Attack 2: John the Ripper Single-Crack rules (GECOS)...`);
-      terminalLogs.push(`[*] Attack 3: Wordlist Dictionary Attack...`);
-      terminalLogs.push(`[*] Attack 4: Incremental Brute Force Attack...`);
-      terminalLogs.push(`\n[*] Launching Attack 1: Targeted wordlist search...`);
-      terminalLogs.push(`$ john --format=${formatName} --wordlist=custom_wordlist.txt hash.txt`);
-
-      // Try running John the Ripper binary
-      try {
-        const potPath = path.join(process.cwd(), 'john.pot');
-        if (fs.existsSync(potPath)) {
-          fs.unlinkSync(potPath);
-        }
-
-        const johnResult = await runCommand(`john --format=${formatName} --wordlist=custom_wordlist.txt hash.txt`);
-        
-        if (!johnResult.error) {
-          const johnShow = await runCommand(`john --show --format=${formatName} hash.txt`);
-          if (johnShow.stdout && johnShow.stdout.includes(':')) {
-            crackedPassword = johnShow.stdout.split(':')[1].trim().split('\n')[0];
-            usedRealJohn = true;
-            
-            if (johnResult.stdout) {
-              terminalLogs.push(johnResult.stdout.trim());
-            }
-            terminalLogs.push(johnShow.stdout.trim());
-          }
-        }
-      } catch (e) {
-        // Binary execution failed, will fall back to JS simulation
-      }
-
-      // JS native solver fallback (if binary is missing or fails to crack)
-      if (!crackedPassword) {
-        terminalLogs.push(`[!] JTR binary execution skipped (not found in system PATH).`);
-        
-        if (targetHash.startsWith('$1$')) {
-          terminalLogs.push(`[*] Falling back to JavaScript Cryptographic engine (MD5crypt compare)...`);
-          for (let i = 0; i < wordlist.length; i++) {
-            const candidate = wordlist[i];
-            const candHash = await getMd5Crypt(candidate);
-            if (candHash === targetHash) {
-              crackedPassword = candidate;
-              break;
-            }
-          }
-        } else {
-          terminalLogs.push(`[*] Falling back to JavaScript Cryptographic engine (Bcrypt compare)...`);
-          for (let i = 0; i < wordlist.length; i++) {
-            const candidate = wordlist[i];
-            const isMatch = await bcrypt.compare(candidate, user.password);
-            if (isMatch) {
-              crackedPassword = candidate;
-              break;
-            }
-          }
-        }
-      }
-
-      const endTime = Date.now();
-      const timeTakenSec = ((endTime - startTime) / 1000).toFixed(2);
-
-      if (crackedPassword) {
-        terminalLogs.push(`\n[+] Attack 1 SUCCESSFUL: Password cracked!`);
-        terminalLogs.push(`[+] Aborting other attack tasks to save CPU cycles.`);
-        terminalLogs.push(`\nLoaded 1 password hash (${formatName})`);
-        terminalLogs.push(`Cracked hash value: ${targetHash}`);
-        terminalLogs.push(`Plaintext password recovered: "${crackedPassword}"`);
-        terminalLogs.push(`\n[+] 1 password hash cracked, 0 left`);
-        terminalLogs.push(`[+] Audit completed successfully in ${timeTakenSec} seconds.`);
-        
-        res.json({
-          success: true,
-          cracked: true,
-          password: crackedPassword,
-          timeTaken: timeTakenSec,
-          logs: terminalLogs,
-          usedRealJohn
-        });
-      } else {
-        terminalLogs.push(`\n[-] Attack 1: Wordlist exhausted. 0 passwords cracked.`);
-        terminalLogs.push(`[*] Launching Attack 2: Single-Crack mode...`);
-        terminalLogs.push(`$ john --format=${formatName} --single hash.txt`);
-        terminalLogs.push(`[-] Attack 2: GECOS rules exhausted. 0 passwords cracked.`);
-        terminalLogs.push(`[*] Launching Attack 3 & 4 (Dictionary & Brute-Force)...`);
-        terminalLogs.push(`[-] JTR exhausted all attack options. Password is secure.`);
-        terminalLogs.push(`[-] Audit finished in ${timeTakenSec} seconds.`);
-        
-        res.json({
-          success: true,
-          cracked: false,
-          timeTaken: timeTakenSec,
-          logs: terminalLogs,
-          usedRealJohn
-        });
-      }
-    } finally {
-      try {
-        if (fs.existsSync(wordlistPath)) {
-          fs.unlinkSync(wordlistPath);
-        }
-        if (fs.existsSync(hashPath)) {
-          fs.unlinkSync(hashPath);
-        }
-        const potPath = path.join(process.cwd(), 'john.pot');
-        if (fs.existsSync(potPath)) {
-          fs.unlinkSync(potPath);
-        }
-      } catch (cleanupError) {
-        console.error('Error cleaning up JTR temp files:', cleanupError);
-      }
-    }
+    res.json({
+      success: true,
+      cracked: result.cracked,
+      password: result.password,
+      winner: result.winner,
+      timeTaken: result.timeTaken,
+      logs: result.logs,
+      usedRealJohn: result.usedRealJohn
+    });
 
   } catch (error) {
     console.error('JTR Audit Error:', error);

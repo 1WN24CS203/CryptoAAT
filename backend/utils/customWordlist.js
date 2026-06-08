@@ -141,6 +141,19 @@ export const generateWordlistJS = (name = '', dob = '', college = '', favoriteWo
     fav + college, college + fav,
   ]);
 
+  // Add common weak passwords to basesSet so they also get full suffix/capitalization/leet variations
+  const commonWeak = [
+    '123456', '12345678', '123456789', 'password', 'admin', 'welcome', 
+    'qwerty', 'pass123', 'letmein', '12345', '1234567', 'password123',
+    'password1234', 'admin123', 'admin1234', 'welcome123', 'welcome1',
+    'iloveyou', 'princess', 'monkey', 'trustno1', 'shadow', 'superman'
+  ];
+  commonWeak.forEach(cw => {
+    basesSet.add(cw);
+    basesSet.add(cw.toUpperCase());
+    basesSet.add(cw.charAt(0).toUpperCase() + cw.slice(1));
+  });
+
   // Add all shortforms to basesSet so they get general prefix/suffix/leet treatment
   uniqueNameShortforms.forEach(sf => {
     basesSet.add(sf);
@@ -237,12 +250,6 @@ export const generateWordlistJS = (name = '', dob = '', college = '', favoriteWo
   const wordlist = new Set();
 
   // Add common fallback weak passwords
-  const commonWeak = [
-    '123456', '12345678', '123456789', 'password', 'admin', 'welcome', 
-    'qwerty', 'pass123', 'letmein', '12345', '1234567', 'password123',
-    'password1234', 'admin123', 'admin1234', 'welcome123', 'welcome1',
-    'iloveyou', 'princess', 'monkey', 'trustno1', 'shadow', 'superman'
-  ];
   for (const cw of commonWeak) {
     wordlist.add(cw);
   }
@@ -258,6 +265,13 @@ export const generateWordlistJS = (name = '', dob = '', college = '', favoriteWo
     // prefix + base
     for (const pre of prefixes) {
       wordlist.add(pre + base);
+    }
+
+    // prefix + base + suffix (combines prefixes, bases, and suffixes to generate > 10k custom targeted combinations)
+    for (const pre of prefixes) {
+      for (const suf of suffixes) {
+        wordlist.add(pre + base + suf);
+      }
     }
 
     // leet speak style 1 (light substitutions)
