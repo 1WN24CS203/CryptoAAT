@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
-import { MdOutlineSecurity, MdOutlineTerminal, MdOutlineCheckCircle, MdOutlineHighlightOff, MdOutlineArrowForward } from 'react-icons/md';
+import { MdOutlineSecurity, MdOutlineTerminal, MdOutlineCheckCircle, MdOutlineHighlightOff, MdOutlineArrowForward, MdStop } from 'react-icons/md';
 
 const API_BASE = 'http://localhost:5000/api/auth';
 
@@ -62,6 +62,16 @@ function JtrRecovery() {
 
   const appendLine = (line) => {
     setLines(prev => [...prev, line]);
+  };
+
+  const handleAbort = () => {
+    if (esRef.current) {
+      esRef.current.close();
+      esRef.current = null;
+    }
+    setLines(prev => [...prev, '', '⛔ Attack aborted by user.']);
+    setError('Attack was manually aborted.');
+    setMode('select');
   };
 
   const handleStartJtr = () => {
@@ -235,6 +245,15 @@ function JtrRecovery() {
                 <span className="animate-blink text-success fw-bold">█</span>
               </div>
 
+              <div className="d-flex justify-content-center mt-3">
+                <button
+                  onClick={handleAbort}
+                  className="btn btn-outline-danger d-flex align-items-center gap-2 px-4"
+                  style={{ borderColor: 'rgba(220,53,69,0.5)', fontSize: '0.85rem' }}
+                >
+                  <MdStop /> Abort Attack
+                </button>
+              </div>
               <p className="text-secondary small text-center mt-2">
                 ⚡ Live output from <code>john</code> process — this is not a simulation
               </p>
