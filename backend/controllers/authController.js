@@ -9,6 +9,19 @@ import User from '../models/User.js';
 import { analyzePassword } from '../utils/passwordAnalyzer.js';
 import { generateWordlistJS } from '../utils/customWordlist.js';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ATTACK DURATION CONFIGURATION
+// Adjust the values below (in milliseconds) to control how long each
+// JTR attack is allowed to run before moving on / timing out.
+// ─────────────────────────────────────────────────────────────────────────────
+const ATTACK_DURATIONS = {
+  customWordlist:  25000,   // ms — Custom Wordlist attack   (sequential / live stream)
+  rockyouDict:     25000,   // ms — rockyou.txt Dictionary   (sequential / live stream)
+  bruteForce:      25000,   // ms — Incremental Brute Force  (sequential / live stream)
+  concurrentTotal: 30000,   // ms — Overall cap for ALL parallel attacks (jtrRecover / jtrAudit)
+};
+// ─────────────────────────────────────────────────────────────────────────────
+
 // Generate JWT token helper
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
@@ -645,7 +658,7 @@ const runJTRConcurrentCracking = (targetHash, formatName, user) => {
       if (!isFinished) {
         isFinished = true;
         clearInterval(intervalId);
-        terminalLogs.push(`\n[!] Timeout: JTR attack timed out after 30 seconds.`);
+        terminalLogs.push(`\n[!] Timeout: JTR parallel attacks timed out after ${ATTACK_DURATIONS.concurrentTotal / 1000} seconds.`);
         processes.forEach(p => {
           try { p.proc.kill('SIGKILL'); } catch (e) {}
         });
@@ -655,7 +668,7 @@ const runJTRConcurrentCracking = (targetHash, formatName, user) => {
         ]);
         resolve({ cracked: false, crackedPassword: null, winner: null, terminalLogs });
       }
-    }, 30000);
+    }, ATTACK_DURATIONS.concurrentTotal);
   });
 };
 
@@ -866,7 +879,7 @@ export const jtrStream = async (req, res) => {
     sendEvent({ type: 'log', line: '' });
 
     // ── Helper: spawn john and pipe output live ───────────────────────────
-    const runJohnLive = (attackLabel, johnArgs) => {
+    const runJohnLive = (attackLabel, johnArgs, timeoutMs) => {
       return new Promise((resolve) => {
         if (isFinished) return resolve(null);
 
@@ -899,10 +912,10 @@ export const jtrStream = async (req, res) => {
 
         const timeoutId = setTimeout(() => {
           if (!proc.killed) {
-            sendEvent({ type: 'log', line: '[!] Attack timeout — moving to next strategy...' });
+            sendEvent({ type: 'log', line: `[!] Attack timeout (${timeoutMs / 1000}s) — moving to next strategy...` });
             proc.kill('SIGKILL');
           }
-        }, 25000);
+        }, timeoutMs);
 
         proc.on('close', async () => {
           clearTimeout(timeoutId);
@@ -945,7 +958,7 @@ export const jtrStream = async (req, res) => {
       `--pot=${potFile}`,
       `--wordlist=${customWlFile}`,
       hashFile
-    ]);
+    ], ATTACK_DURATIONS.customWordlist);
     if (r1) { crackedPassword = r1; winner = 'Custom Wordlist'; }
 
     // ── Attack 2: Rockyou Dictionary ────────────────────────────────────
@@ -956,7 +969,7 @@ export const jtrStream = async (req, res) => {
         `--pot=${potFile}`,
         `--wordlist=${rockyouPath}`,
         hashFile
-      ]);
+      ], ATTACK_DURATIONS.rockyouDict);
       if (r2) { crackedPassword = r2; winner = 'rockyou.txt Dictionary'; }
     }
 
@@ -968,7 +981,7 @@ export const jtrStream = async (req, res) => {
         `--pot=${potFile}`,
         '--incremental',
         hashFile
-      ]);
+      ], ATTACK_DURATIONS.bruteForce);
       if (r3) { crackedPassword = r3; winner = 'Incremental Brute Force'; }
     }
 
