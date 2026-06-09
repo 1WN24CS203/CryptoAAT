@@ -30,7 +30,6 @@ function Register({ setUser }) {
     e.preventDefault();
     setError('');
 
-    // Extra validation
     if (!formData.name || !formData.email || !formData.password || !formData.dob || !formData.collegeName || !formData.favoriteWord) {
       setError('Please fill in all the fields');
       return;
@@ -42,7 +41,6 @@ function Register({ setUser }) {
 
     if (data.success) {
       localStorage.setItem('cryptoaat_token', data.token);
-      // Construct user object matches state
       setUser({
         _id: data._id,
         name: data.name,
@@ -58,13 +56,13 @@ function Register({ setUser }) {
     }
   };
 
-
   return (
     <div className="animate-fade-in row justify-content-center align-items-center min-h-center py-4">
       <div className="col-sm-10 col-md-8 col-lg-6">
         <div className="glass-card p-4 p-md-5">
           <div className="text-center mb-4">
-            <h2 className="fw-bold text-dark">Create Account</h2>
+            <h2 className="fw-bold text-white mb-2" style={{ fontFamily: 'Outfit, sans-serif' }}>Create Account</h2>
+            <p className="text-secondary small">Register to analyze your credential cryptographic strength</p>
           </div>
 
           {error && (
@@ -76,7 +74,7 @@ function Register({ setUser }) {
 
           <form onSubmit={handleSubmit}>
             <div className="mb-3">
-              <label className="form-label text-muted small">Full Name</label>
+              <label className="form-label text-secondary small">Full Name</label>
               <input
                 type="text"
                 name="name"
@@ -89,7 +87,7 @@ function Register({ setUser }) {
             </div>
 
             <div className="mb-3">
-              <label className="form-label text-muted small">Email Address</label>
+              <label className="form-label text-secondary small">Email Address</label>
               <input
                 type="email"
                 name="email"
@@ -102,19 +100,19 @@ function Register({ setUser }) {
             </div>
 
             <div className="mb-3">
-              <label className="form-label text-muted small">Date of Birth</label>
+              <label className="form-label text-secondary small">Date of Birth</label>
               <input
                 type="date"
                 name="dob"
                 value={formData.dob}
                 onChange={handleChange}
-                className="form-control custom-input"
+                className="form-control custom-input text-white"
                 required
               />
             </div>
 
             <div className="mb-3">
-              <label className="form-label text-muted small">College/University Name</label>
+              <label className="form-label text-secondary small">College/University Name</label>
               <input
                 type="text"
                 name="collegeName"
@@ -127,7 +125,7 @@ function Register({ setUser }) {
             </div>
 
             <div className="mb-3">
-              <label className="form-label text-muted small">Favorite Word</label>
+              <label className="form-label text-secondary small">Favorite Word</label>
               <input
                 type="text"
                 name="favoriteWord"
@@ -140,7 +138,7 @@ function Register({ setUser }) {
             </div>
 
             <div className="mb-3">
-              <label className="form-label text-muted small">Password</label>
+              <label className="form-label text-secondary small">Password</label>
               <div className="position-relative mb-2">
                 <input
                   type={showPassword ? 'text' : 'password'}
@@ -154,13 +152,11 @@ function Register({ setUser }) {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="btn position-absolute top-50 end-0 translate-middle-y text-muted border-0 bg-transparent pe-3"
+                  className="btn position-absolute top-50 end-0 translate-middle-y text-secondary border-0 bg-transparent pe-3"
                 >
                   {showPassword ? <MdVisibilityOff className="fs-5" /> : <MdVisibility className="fs-5" />}
                 </button>
               </div>
-
-
             </div>
 
             <div className="mt-4 d-grid">
@@ -175,8 +171,8 @@ function Register({ setUser }) {
           </form>
 
           <div className="text-center mt-3">
-            <span className="text-muted small">Already have an account? </span>
-            <Link to="/login" className="small text-decoration-none" style={{ color: '#4f46e5' }}>
+            <span className="text-secondary small">Already have an account? </span>
+            <Link to="/login" className="small text-decoration-none" style={{ color: 'var(--primary-color)' }}>
               Sign In
             </Link>
           </div>

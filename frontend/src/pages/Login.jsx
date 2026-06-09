@@ -38,12 +38,10 @@ function Login({ setUser }) {
     if (data.success) {
       localStorage.setItem('cryptoaat_token', data.token);
       
-      // Fetch entire profile to get registration fields (birthYear, collegeName, favoriteWord)
       const profileData = await apiRequest('/profile', 'GET', null, data.token);
       if (profileData.success) {
         setUser(profileData.user);
       } else {
-        // Fallback if profile fails (unlikely)
         setUser({
           _id: data._id,
           name: data.name,
@@ -62,7 +60,8 @@ function Login({ setUser }) {
       <div className="col-sm-10 col-md-8 col-lg-5">
         <div className="glass-card p-4 p-md-5">
           <div className="text-center mb-4">
-            <h2 className="fw-bold text-dark">Welcome Back</h2>
+            <h2 className="fw-bold text-white mb-2" style={{ fontFamily: 'Outfit, sans-serif' }}>Welcome Back</h2>
+            <p className="text-secondary small">Access your security profile dashboard</p>
           </div>
 
           {error && (
@@ -74,7 +73,7 @@ function Login({ setUser }) {
 
           <form onSubmit={handleSubmit}>
             <div className="mb-3">
-              <label className="form-label text-muted small">Email Address</label>
+              <label className="form-label text-secondary small">Email Address</label>
               <input
                 type="email"
                 name="email"
@@ -88,8 +87,8 @@ function Login({ setUser }) {
 
             <div className="mb-3">
               <div className="d-flex justify-content-between align-items-center mb-1">
-                <label className="form-label text-muted small mb-0">Password</label>
-                <Link to="/forgot-password" className="small text-decoration-none" style={{ color: '#4f46e5', fontSize: '0.8rem' }}>
+                <label className="form-label text-secondary small mb-0">Password</label>
+                <Link to="/forgot-password" className="small text-decoration-none animate-color" style={{ color: 'var(--primary-color)', fontSize: '0.8rem' }}>
                   Forgot Password?
                 </Link>
               </div>
@@ -106,7 +105,7 @@ function Login({ setUser }) {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="btn position-absolute top-50 end-0 translate-middle-y text-muted border-0 bg-transparent pe-3"
+                  className="btn position-absolute top-50 end-0 translate-middle-y text-secondary border-0 bg-transparent pe-3"
                 >
                   {showPassword ? <MdVisibilityOff className="fs-5" /> : <MdVisibility className="fs-5" />}
                 </button>
@@ -125,8 +124,8 @@ function Login({ setUser }) {
           </form>
 
           <div className="text-center mt-3">
-            <span className="text-muted small">Don't have an account? </span>
-            <Link to="/register" className="small text-decoration-none" style={{ color: '#4f46e5' }}>
+            <span className="text-secondary small">Don't have an account? </span>
+            <Link to="/register" className="small text-decoration-none animate-color" style={{ color: 'var(--primary-color)' }}>
               Sign Up
             </Link>
           </div>

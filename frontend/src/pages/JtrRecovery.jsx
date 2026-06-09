@@ -44,7 +44,7 @@ function JtrRecovery() {
             setMode('failed');
           }
         }
-      }, 350); // Delay between terminal output lines for realism
+      }, 150); // Speed up slightly for improved UX while retaining realistic logging feel
 
       return () => clearInterval(interval);
     }
@@ -101,11 +101,11 @@ function JtrRecovery() {
 
   return (
     <div className="animate-fade-in row justify-content-center align-items-center min-h-center py-4">
-      <div className="col-sm-10 col-md-8 col-lg-6">
+      <div className="col-sm-10 col-md-8 col-lg-7">
         <div className="glass-card p-4 p-md-5">
           <div className="text-center mb-4">
-            <h2 className="fw-bold text-dark">Password Recovery Audit</h2>
-            <p className="text-muted small">Identity Verified: <strong>{email}</strong></p>
+            <h2 className="fw-bold text-white mb-2" style={{ fontFamily: 'Outfit, sans-serif' }}>Cryptographic Recovery Console</h2>
+            <p className="text-secondary small">Target Account: <strong className="text-primary">{email}</strong></p>
           </div>
 
           {error && (
@@ -117,51 +117,53 @@ function JtrRecovery() {
           {mode === 'select' && (
             <div className="d-flex flex-column gap-4 mt-2">
               {/* Option A: John the Ripper */}
-              <div className="border rounded p-4 bg-light">
+              <div className="border rounded p-4 bg-dark bg-opacity-20" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
                 <div className="d-flex align-items-center gap-2 mb-2">
-                  <MdOutlineTerminal className="fs-4 text-primary" />
-                  <h4 className="h5 fw-bold text-dark mb-0">Cryptographic Recovery (JTR)</h4>
+                  <MdOutlineTerminal className="fs-4 text-primary animate-pulse" />
+                  <h4 className="h5 fw-bold text-white mb-0">Parallel John the Ripper Audit</h4>
                 </div>
-                <p className="text-muted small mb-3">
-                  Run automated cryptographic JTR attacks to decrypt and recover your current password using personal profile dictionaries, standard dictionary, and brute-force rules.
+                <p className="text-secondary small mb-3">
+                  This executes the JTR cryptographic binary directly in the backend terminal. It attempts to decrypt the MD5Crypt/Bcrypt hash using three concurrent strategies: a targeted personal wordlist, the standard rockyou list, and incremental rules.
                 </p>
                 
-                <div className="form-check text-start mb-3">
+                <div className="form-check text-start mb-4">
                   <input 
                     type="checkbox" 
                     className="form-check-input" 
                     id="permissionCheck"
                     checked={permission}
                     onChange={(e) => setPermission(e.target.checked)}
+                    style={{ cursor: 'pointer' }}
                   />
-                  <label className="form-check-label text-muted small" htmlFor="permissionCheck" style={{ cursor: 'pointer', lineHeight: '1.2' }}>
-                    I authorize the system to attempt to decrypt my password hash.
+                  <label className="form-check-label text-secondary small" htmlFor="permissionCheck" style={{ cursor: 'pointer', lineHeight: '1.3' }}>
+                    I authorize the platform to execute cryptographic attacks on my credential hash.
                   </label>
                 </div>
 
                 <button 
                   onClick={handleStartJtr} 
                   disabled={!permission}
-                  className="btn btn-primary w-100 d-flex align-items-center justify-content-center gap-1"
+                  className="btn gradient-button w-100 d-flex align-items-center justify-content-center gap-2"
                 >
-                  Run JTR Recovery Audit <MdOutlineArrowForward />
+                  Run JTR Cryptographic Recovery <MdOutlineArrowForward />
                 </button>
               </div>
 
               {/* Option B: Standard Reset */}
-              <div className="border rounded p-4">
+              <div className="border rounded p-4" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
                 <div className="d-flex align-items-center gap-2 mb-2">
                   <MdOutlineSecurity className="fs-4 text-secondary" />
-                  <h4 className="h5 fw-bold text-dark mb-0">Standard Password Reset</h4>
+                  <h4 className="h5 fw-bold text-white mb-0">Direct Password Reset Override</h4>
                 </div>
-                <p className="text-muted small mb-3">
-                  Perform a traditional password override. Set a completely new password immediately without running security verification checks on your old credential.
+                <p className="text-secondary small mb-3">
+                  Skip hash auditing entirely. Proceed to override the current credential with a new secure password immediately using standard OTP authorization rules.
                 </p>
                 <button 
                   onClick={handleGoToReset} 
-                  className="btn btn-outline-secondary w-100 d-flex align-items-center justify-content-center gap-1"
+                  className="btn btn-outline-secondary w-100 d-flex align-items-center justify-content-center gap-2"
+                  style={{ borderColor: 'rgba(255,255,255,0.1)', color: 'var(--text-secondary)' }}
                 >
-                  Reset Password Directly <MdOutlineArrowForward />
+                  Directly Modify Password <MdOutlineArrowForward />
                 </button>
               </div>
             </div>
@@ -169,74 +171,85 @@ function JtrRecovery() {
 
           {mode === 'running' && (
             <div>
-              <div className="d-flex align-items-center gap-2 mb-3">
-                <span className="spinner-border spinner-border-sm text-primary" role="status"></span>
-                <span className="text-muted small">Executing John the Ripper session...</span>
+              <div className="terminal-header">
+                <div className="terminal-dots">
+                  <span className="terminal-dot dot-red"></span>
+                  <span className="terminal-dot dot-yellow"></span>
+                  <span className="terminal-dot dot-green animate-blink"></span>
+                </div>
+                <div className="terminal-title">jtr_session@cryptoaat_kali</div>
+                <div style={{ width: '42px' }}></div>
               </div>
-              <div className="bg-dark text-light p-3 rounded font-monospace" style={{ minHeight: '220px', fontSize: '0.85rem', whiteSpace: 'pre-line' }}>
+              <div className="terminal-block" style={{ minHeight: '260px', borderTopLeftRadius: '0', borderTopRightRadius: '0' }}>
                 {visibleLogs.map((log, index) => (
                   <div key={index} className="mb-1">{log}</div>
                 ))}
-                <span className="animate-blink">|</span>
+                <span className="animate-blink text-success fw-bold">█</span>
               </div>
             </div>
           )}
 
           {mode === 'cracked' && (
-            <div className="text-center py-4">
+            <div className="text-center py-4 glow-card-danger rounded border p-4">
               <div className="d-inline-flex p-3 rounded-circle bg-danger bg-opacity-10 text-danger mb-3 border border-danger border-opacity-25">
-                <MdOutlineHighlightOff className="display-4" />
+                <MdOutlineHighlightOff className="display-4 animate-bounce" />
               </div>
-              <h3 className="h4 fw-bold text-dark mb-2">Credential Cracked & Recovered!</h3>
-              <p className="text-muted mx-auto" style={{ maxWidth: '500px' }}>
-                Your password was successfully recovered in <strong>{timeTaken}s</strong> using the <strong>{winner || 'custom targeted wordlist'}</strong> attack. This indicates your password is <strong>highly vulnerable</strong>.
+              <h3 className="h4 fw-bold text-white mb-2" style={{ fontFamily: 'Outfit, sans-serif' }}>Credential Decrypted Successfully!</h3>
+              <p className="text-secondary mx-auto mb-4" style={{ maxWidth: '500px' }}>
+                Your account password hash was cracked in <strong className="text-white">{timeTaken}s</strong> using the <strong className="text-primary">{winner}</strong> attack. This proves the current password is highly weak and vulnerable.
               </p>
               
-              <div className="bg-light border rounded p-3 my-4">
-                <div className="text-muted small text-uppercase mb-1">Recovered Password:</div>
-                <div className="fs-3 fw-bold text-danger font-monospace">{crackedPassword}</div>
-                <div className="text-danger small mt-2 fw-semibold">
-                  ⏱️ For security, this password will be hidden on screen in {countdown}s
+              <div className="bg-dark bg-opacity-40 border border-danger border-opacity-30 rounded p-4 my-4">
+                <div className="text-muted small text-uppercase mb-2">Cracked Password Result:</div>
+                <div className="fs-3 fw-bold text-danger font-monospace tracking-wide">{crackedPassword}</div>
+                <div className="text-danger small mt-3 fw-semibold">
+                  ⏱️ For confidentiality, this panel will lock and mask in {countdown}s
                 </div>
               </div>
 
               <div className="d-flex justify-content-center gap-3">
-                <Link to="/login" className="btn btn-primary px-4">
+                <Link to="/login" className="btn btn-primary px-4 py-2">
                   Proceed to Login
                 </Link>
-                <button onClick={handleGoToReset} className="btn btn-outline-secondary px-4">
-                  Reset Password Anyway
+                <button onClick={handleGoToReset} className="btn btn-outline-secondary px-4 py-2" style={{ borderColor: 'rgba(255,255,255,0.1)', color: 'var(--text-secondary)' }}>
+                  Override Password
                 </button>
               </div>
             </div>
           )}
 
           {mode === 'failed' && (
-            <div className="text-center py-4">
+            <div className="text-center py-4 glow-card-success rounded border p-4">
               <div className="d-inline-flex p-3 rounded-circle bg-success bg-opacity-10 text-success mb-3 border border-success border-opacity-25">
                 <MdOutlineCheckCircle className="display-4" />
               </div>
-              <h3 className="h4 fw-bold text-dark mb-2">Recovery Search Exhausted</h3>
-              <p className="text-muted mx-auto mb-4" style={{ maxWidth: '500px' }}>
-                John the Ripper generated and scanned all candidate variations in the wordlist but was **unable** to crack your password. Your password is cryptographically secure.
+              <h3 className="h4 fw-bold text-white mb-2" style={{ fontFamily: 'Outfit, sans-serif' }}>Cryptographic Strength Verified</h3>
+              <p className="text-secondary mx-auto mb-4" style={{ maxWidth: '500px' }}>
+                All JTR search rules (custom wordlists, standard rockyou list, and incremental patterns) were exhausted. The active password hash could not be cracked within the execution window.
               </p>
 
-              <div className="bg-dark text-light p-3 rounded font-monospace text-start mb-4" style={{ fontSize: '0.85rem' }}>
-                {logs.slice(-5).map((log, index) => (
+              <div className="terminal-header text-start">
+                <div className="terminal-dots">
+                  <span className="terminal-dot dot-red"></span>
+                  <span className="terminal-dot dot-yellow"></span>
+                  <span className="terminal-dot dot-green"></span>
+                </div>
+                <div className="terminal-title">jtr_dump@cryptoaat_kali</div>
+                <div></div>
+              </div>
+              <div className="terminal-block text-start mb-4" style={{ maxHeight: '120px', borderTopLeftRadius: '0', borderTopRightRadius: '0' }}>
+                {logs.slice(-4).map((log, index) => (
                   <div key={index} className="mb-1">{log}</div>
                 ))}
               </div>
 
-              <div className="d-flex justify-content-center gap-2 flex-wrap">
-                <button onClick={handleGoToReset} className="btn btn-primary px-3 d-flex align-items-center gap-1">
-                  Change Password via Reset <MdOutlineArrowForward />
+              <div className="d-flex justify-content-center gap-3 flex-wrap">
+                <button onClick={handleGoToReset} className="btn gradient-button px-4 py-2 d-flex align-items-center gap-2">
+                  Force Reset Password <MdOutlineArrowForward />
                 </button>
-                <button onClick={() => setMode('select')} className="btn btn-outline-primary px-3">
-                  Retry Audit
+                <button onClick={() => setMode('select')} className="btn btn-outline-primary px-4 py-2">
+                  Re-run Audit
                 </button>
-                <Link to="/login" className="btn btn-outline-secondary px-3">
-                  Cancel
-                </Link>
               </div>
             </div>
           )}
