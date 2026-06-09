@@ -9,6 +9,7 @@ import {
   testAnalyzer,
   jtrRecover,
   jtrAudit,
+  jtrStream,
 } from '../controllers/authController.js';
 import { protect } from '../middleware/authMiddleware.js';
 
@@ -20,6 +21,7 @@ router.post('/forgot-password', forgotPassword);
 router.post('/verify-otp', verifyOtp);
 router.post('/reset-password', resetPassword);
 router.post('/jtr-recover', jtrRecover);
+router.get('/jtr-stream', jtrStream);
 router.post('/jtr-audit', protect, jtrAudit);
 router.get('/profile', protect, getProfile);
 router.post('/analyze-test', testAnalyzer);

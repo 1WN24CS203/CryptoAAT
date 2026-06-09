@@ -1,63 +1,47 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
-import { apiRequest } from '../utils/api';
 import { MdOutlineSecurity, MdOutlineTerminal, MdOutlineCheckCircle, MdOutlineHighlightOff, MdOutlineArrowForward } from 'react-icons/md';
 
-function JtrRecovery() {
-  const location = useLocation();
-  const navigate = useNavigate();
-  
-  const email = location.state?.email || '';
-  const otp = location.state?.otp || '';
+const API_BASE = 'http://localhost:5000/api/auth';
 
-  const [mode, setMode] = useState('select'); // 'select', 'running', 'cracked', 'failed'
-  const [logs, setLogs] = useState([]);
-  const [visibleLogs, setVisibleLogs] = useState([]);
+function JtrRecovery() {
+  const location  = useLocation();
+  const navigate  = useNavigate();
+
+  const email = location.state?.email || '';
+  const otp   = location.state?.otp   || '';
+
+  const [mode, setMode]                   = useState('select'); // 'select' | 'running' | 'cracked' | 'failed'
+  const [lines, setLines]                 = useState([]);       // live log lines
   const [crackedPassword, setCrackedPassword] = useState('');
-  const [winner, setWinner] = useState('');
-  const [timeTaken, setTimeTaken] = useState('0.0');
-  const [error, setError] = useState('');
-  const [permission, setPermission] = useState(false);
-  const [countdown, setCountdown] = useState(30);
+  const [winner, setWinner]               = useState('');
+  const [timeTaken, setTimeTaken]         = useState('0.0');
+  const [error, setError]                 = useState('');
+  const [permission, setPermission]       = useState(false);
+  const [countdown, setCountdown]         = useState(30);
+
+  const terminalRef = useRef(null);
+  const esRef       = useRef(null);  // holds the EventSource instance
 
   useEffect(() => {
-    if (!email || !otp) {
-      navigate('/forgot-password');
-    }
+    if (!email || !otp) navigate('/forgot-password');
   }, [email, otp, navigate]);
 
-  // Terminal log typing effect simulation
+  // Auto-scroll terminal to bottom whenever a new line arrives
   useEffect(() => {
-    if (logs.length > 0) {
-      let currentLine = 0;
-      setVisibleLogs([]);
-      
-      const interval = setInterval(() => {
-        if (currentLine < logs.length) {
-          setVisibleLogs((prev) => [...prev, logs[currentLine]]);
-          currentLine++;
-        } else {
-          clearInterval(interval);
-          if (crackedPassword) {
-            setMode('cracked');
-          } else {
-            setMode('failed');
-          }
-        }
-      }, 150); // Speed up slightly for improved UX while retaining realistic logging feel
-
-      return () => clearInterval(interval);
+    if (terminalRef.current) {
+      terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
     }
-  }, [logs, crackedPassword]);
+  }, [lines]);
 
-  // Countdown timer for cracked password visibility
+  // Countdown after cracked
   useEffect(() => {
     if (mode === 'cracked') {
       setCountdown(30);
-      const timer = setInterval(() => {
-        setCountdown((prev) => {
+      const t = setInterval(() => {
+        setCountdown(prev => {
           if (prev <= 1) {
-            clearInterval(timer);
+            clearInterval(t);
             setCrackedPassword('');
             setMode('select');
             return 0;
@@ -65,37 +49,79 @@ function JtrRecovery() {
           return prev - 1;
         });
       }, 1000);
-      return () => clearInterval(timer);
+      return () => clearInterval(t);
     }
   }, [mode]);
 
-  const handleStartJtr = async () => {
+  // Clean up SSE on unmount
+  useEffect(() => {
+    return () => {
+      if (esRef.current) esRef.current.close();
+    };
+  }, []);
+
+  const appendLine = (line) => {
+    setLines(prev => [...prev, line]);
+  };
+
+  const handleStartJtr = () => {
     setMode('running');
+    setLines([]);
     setError('');
-    
-    try {
-      const data = await apiRequest('/jtr-recover', 'POST', { email, otp });
-      if (data.success) {
-        setLogs(data.logs || []);
-        setTimeTaken(data.timeTaken || '0.0');
-        if (data.cracked) {
-          setCrackedPassword(data.password);
-          setWinner(data.winner || '');
-        } else {
-          setCrackedPassword('');
-          setWinner('');
+    setCrackedPassword('');
+    setWinner('');
+
+    // Close any existing SSE connection
+    if (esRef.current) esRef.current.close();
+
+    // Open SSE connection to real JTR stream endpoint
+    const url = `${API_BASE}/jtr-stream?email=${encodeURIComponent(email)}&otp=${encodeURIComponent(otp)}`;
+    const es = new EventSource(url);
+    esRef.current = es;
+
+    es.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+
+        if (data.type === 'log') {
+          // Append line exactly as it comes from the real john binary
+          appendLine(data.line);
+
+        } else if (data.type === 'done') {
+          es.close();
+          esRef.current = null;
+          setTimeTaken(data.timeTaken || '0.0');
+          if (data.cracked && data.password) {
+            setCrackedPassword(data.password);
+            setWinner(data.winner || '');
+            setMode('cracked');
+          } else {
+            setMode('failed');
+          }
+
+        } else if (data.type === 'error') {
+          es.close();
+          esRef.current = null;
+          setError(data.message || 'An error occurred during JTR execution.');
+          setMode('select');
         }
-      } else {
-        setError(data.message || 'Audit run failed.');
+      } catch (e) {
+        console.error('SSE parse error:', e);
+      }
+    };
+
+    es.onerror = () => {
+      es.close();
+      esRef.current = null;
+      if (mode === 'running') {
+        setError('Connection to JTR stream lost. Check that the backend is running.');
         setMode('select');
       }
-    } catch (err) {
-      setError('Connection error occurred.');
-      setMode('select');
-    }
+    };
   };
 
   const handleGoToReset = () => {
+    if (esRef.current) esRef.current.close();
     navigate('/reset-password', { state: { email, otp } });
   };
 
@@ -114,38 +140,46 @@ function JtrRecovery() {
             </div>
           )}
 
+          {/* ── Mode: select ─────────────────────────────────────────────── */}
           {mode === 'select' && (
             <div className="d-flex flex-column gap-4 mt-2">
-              {/* Option A: John the Ripper */}
+
+              {/* Option A: Live JTR */}
               <div className="border rounded p-4 bg-dark bg-opacity-20" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
                 <div className="d-flex align-items-center gap-2 mb-2">
                   <MdOutlineTerminal className="fs-4 text-primary animate-pulse" />
-                  <h4 className="h5 fw-bold text-white mb-0">Parallel John the Ripper Audit</h4>
+                  <h4 className="h5 fw-bold text-white mb-0">John the Ripper — Live Execution</h4>
                 </div>
-                <p className="text-secondary small mb-3">
-                  This executes the JTR cryptographic binary directly in the backend terminal. It attempts to decrypt the MD5Crypt/Bcrypt hash using three concurrent strategies: a targeted personal wordlist, the standard rockyou list, and incremental rules.
+                <p className="text-secondary small mb-1">
+                  Runs the <strong className="text-white">real <code>john</code> binary</strong> on your stored md5crypt hash from the database.
+                  Output is streamed live from the process stdout/stderr — no simulation.
                 </p>
-                
+                <p className="text-secondary small mb-3">
+                  Three sequential strategies: <span className="text-primary">Custom Wordlist</span> →{' '}
+                  <span className="text-primary">rockyou.txt</span> →{' '}
+                  <span className="text-primary">Incremental Brute Force</span>
+                </p>
+
                 <div className="form-check text-start mb-4">
-                  <input 
-                    type="checkbox" 
-                    className="form-check-input" 
+                  <input
+                    type="checkbox"
+                    className="form-check-input"
                     id="permissionCheck"
                     checked={permission}
                     onChange={(e) => setPermission(e.target.checked)}
                     style={{ cursor: 'pointer' }}
                   />
                   <label className="form-check-label text-secondary small" htmlFor="permissionCheck" style={{ cursor: 'pointer', lineHeight: '1.3' }}>
-                    I authorize the platform to execute cryptographic attacks on my credential hash.
+                    I authorise cryptographic attacks to be executed against my credential hash.
                   </label>
                 </div>
 
-                <button 
-                  onClick={handleStartJtr} 
+                <button
+                  onClick={handleStartJtr}
                   disabled={!permission}
                   className="btn gradient-button w-100 d-flex align-items-center justify-content-center gap-2"
                 >
-                  Run JTR Cryptographic Recovery <MdOutlineArrowForward />
+                  Launch JTR Live Attack <MdOutlineArrowForward />
                 </button>
               </div>
 
@@ -156,10 +190,10 @@ function JtrRecovery() {
                   <h4 className="h5 fw-bold text-white mb-0">Direct Password Reset Override</h4>
                 </div>
                 <p className="text-secondary small mb-3">
-                  Skip hash auditing entirely. Proceed to override the current credential with a new secure password immediately using standard OTP authorization rules.
+                  Skip hash auditing entirely. Proceed to override the current credential with a new secure password immediately.
                 </p>
-                <button 
-                  onClick={handleGoToReset} 
+                <button
+                  onClick={handleGoToReset}
                   className="btn btn-outline-secondary w-100 d-flex align-items-center justify-content-center gap-2"
                   style={{ borderColor: 'rgba(255,255,255,0.1)', color: 'var(--text-secondary)' }}
                 >
@@ -169,6 +203,7 @@ function JtrRecovery() {
             </div>
           )}
 
+          {/* ── Mode: running — live terminal ────────────────────────────── */}
           {mode === 'running' && (
             <div>
               <div className="terminal-header">
@@ -177,77 +212,127 @@ function JtrRecovery() {
                   <span className="terminal-dot dot-yellow"></span>
                   <span className="terminal-dot dot-green animate-blink"></span>
                 </div>
-                <div className="terminal-title">jtr_session@cryptoaat_kali</div>
+                <div className="terminal-title">john@kali: live cracking session</div>
                 <div style={{ width: '42px' }}></div>
               </div>
-              <div className="terminal-block" style={{ minHeight: '260px', borderTopLeftRadius: '0', borderTopRightRadius: '0' }}>
-                {visibleLogs.map((log, index) => (
-                  <div key={index} className="mb-1">{log}</div>
+
+              <div
+                ref={terminalRef}
+                className="terminal-block"
+                style={{
+                  minHeight: '320px',
+                  maxHeight: '420px',
+                  overflowY: 'auto',
+                  borderTopLeftRadius: '0',
+                  borderTopRightRadius: '0',
+                }}
+              >
+                {lines.map((line, i) => (
+                  <div key={i} className="mb-1" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                    {line || '\u00a0'}
+                  </div>
                 ))}
                 <span className="animate-blink text-success fw-bold">█</span>
               </div>
+
+              <p className="text-secondary small text-center mt-2">
+                ⚡ Live output from <code>john</code> process — this is not a simulation
+              </p>
             </div>
           )}
 
+          {/* ── Mode: cracked ────────────────────────────────────────────── */}
           {mode === 'cracked' && (
             <div className="text-center py-4 glow-card-danger rounded border p-4">
               <div className="d-inline-flex p-3 rounded-circle bg-danger bg-opacity-10 text-danger mb-3 border border-danger border-opacity-25">
                 <MdOutlineHighlightOff className="display-4 animate-bounce" />
               </div>
-              <h3 className="h4 fw-bold text-white mb-2" style={{ fontFamily: 'Outfit, sans-serif' }}>Credential Decrypted Successfully!</h3>
+              <h3 className="h4 fw-bold text-white mb-2" style={{ fontFamily: 'Outfit, sans-serif' }}>
+                Credential Decrypted!
+              </h3>
               <p className="text-secondary mx-auto mb-4" style={{ maxWidth: '500px' }}>
-                Your account password hash was cracked in <strong className="text-white">{timeTaken}s</strong> using the <strong className="text-primary">{winner}</strong> attack. This proves the current password is highly weak and vulnerable.
+                Password hash cracked in <strong className="text-white">{timeTaken}s</strong> using{' '}
+                <strong className="text-primary">{winner}</strong>. This proves the password is highly vulnerable.
               </p>
-              
+
               <div className="bg-dark bg-opacity-40 border border-danger border-opacity-30 rounded p-4 my-4">
-                <div className="text-muted small text-uppercase mb-2">Cracked Password Result:</div>
+                <div className="text-muted small text-uppercase mb-2">Recovered Password:</div>
                 <div className="fs-3 fw-bold text-danger font-monospace tracking-wide">{crackedPassword}</div>
                 <div className="text-danger small mt-3 fw-semibold">
-                  ⏱️ For confidentiality, this panel will lock and mask in {countdown}s
+                  ⏱️ Panel locks in {countdown}s
                 </div>
               </div>
+
+              {/* Show last few terminal lines */}
+              {lines.length > 0 && (
+                <div className="text-start mb-4">
+                  <div className="terminal-header">
+                    <div className="terminal-dots">
+                      <span className="terminal-dot dot-red"></span>
+                      <span className="terminal-dot dot-yellow"></span>
+                      <span className="terminal-dot dot-green"></span>
+                    </div>
+                    <div className="terminal-title">session log (last 5 lines)</div>
+                    <div></div>
+                  </div>
+                  <div className="terminal-block text-start" style={{ maxHeight: '120px', borderTopLeftRadius: '0', borderTopRightRadius: '0', overflowY: 'auto' }}>
+                    {lines.slice(-5).map((line, i) => (
+                      <div key={i} className="mb-1" style={{ whiteSpace: 'pre-wrap' }}>{line || '\u00a0'}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="d-flex justify-content-center gap-3">
                 <Link to="/login" className="btn btn-primary px-4 py-2">
                   Proceed to Login
                 </Link>
-                <button onClick={handleGoToReset} className="btn btn-outline-secondary px-4 py-2" style={{ borderColor: 'rgba(255,255,255,0.1)', color: 'var(--text-secondary)' }}>
+                <button onClick={handleGoToReset} className="btn btn-outline-secondary px-4 py-2"
+                  style={{ borderColor: 'rgba(255,255,255,0.1)', color: 'var(--text-secondary)' }}>
                   Override Password
                 </button>
               </div>
             </div>
           )}
 
+          {/* ── Mode: failed ─────────────────────────────────────────────── */}
           {mode === 'failed' && (
             <div className="text-center py-4 glow-card-success rounded border p-4">
               <div className="d-inline-flex p-3 rounded-circle bg-success bg-opacity-10 text-success mb-3 border border-success border-opacity-25">
                 <MdOutlineCheckCircle className="display-4" />
               </div>
-              <h3 className="h4 fw-bold text-white mb-2" style={{ fontFamily: 'Outfit, sans-serif' }}>Cryptographic Strength Verified</h3>
+              <h3 className="h4 fw-bold text-white mb-2" style={{ fontFamily: 'Outfit, sans-serif' }}>
+                Cryptographic Strength Verified
+              </h3>
               <p className="text-secondary mx-auto mb-4" style={{ maxWidth: '500px' }}>
-                All JTR search rules (custom wordlists, standard rockyou list, and incremental patterns) were exhausted. The active password hash could not be cracked within the execution window.
+                All JTR attacks exhausted — custom wordlist, rockyou.txt dictionary, and incremental brute force.
+                Password hash could not be cracked in <strong className="text-white">{timeTaken}s</strong>.
               </p>
 
-              <div className="terminal-header text-start">
-                <div className="terminal-dots">
-                  <span className="terminal-dot dot-red"></span>
-                  <span className="terminal-dot dot-yellow"></span>
-                  <span className="terminal-dot dot-green"></span>
+              {lines.length > 0 && (
+                <div className="text-start mb-4">
+                  <div className="terminal-header">
+                    <div className="terminal-dots">
+                      <span className="terminal-dot dot-red"></span>
+                      <span className="terminal-dot dot-yellow"></span>
+                      <span className="terminal-dot dot-green"></span>
+                    </div>
+                    <div className="terminal-title">jtr session log (last 6 lines)</div>
+                    <div></div>
+                  </div>
+                  <div className="terminal-block text-start" style={{ maxHeight: '140px', borderTopLeftRadius: '0', borderTopRightRadius: '0', overflowY: 'auto' }}>
+                    {lines.slice(-6).map((line, i) => (
+                      <div key={i} className="mb-1" style={{ whiteSpace: 'pre-wrap' }}>{line || '\u00a0'}</div>
+                    ))}
+                  </div>
                 </div>
-                <div className="terminal-title">jtr_dump@cryptoaat_kali</div>
-                <div></div>
-              </div>
-              <div className="terminal-block text-start mb-4" style={{ maxHeight: '120px', borderTopLeftRadius: '0', borderTopRightRadius: '0' }}>
-                {logs.slice(-4).map((log, index) => (
-                  <div key={index} className="mb-1">{log}</div>
-                ))}
-              </div>
+              )}
 
               <div className="d-flex justify-content-center gap-3 flex-wrap">
                 <button onClick={handleGoToReset} className="btn gradient-button px-4 py-2 d-flex align-items-center gap-2">
                   Force Reset Password <MdOutlineArrowForward />
                 </button>
-                <button onClick={() => setMode('select')} className="btn btn-outline-primary px-4 py-2">
+                <button onClick={() => { setLines([]); setMode('select'); }} className="btn btn-outline-primary px-4 py-2">
                   Re-run Audit
                 </button>
               </div>
