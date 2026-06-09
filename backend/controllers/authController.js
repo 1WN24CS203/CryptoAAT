@@ -4,7 +4,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import nodemailer from 'nodemailer';
-import { exec, execSync } from 'child_process';
+import { exec, execSync, spawn } from 'child_process';
 import User from '../models/User.js';
 import { analyzePassword } from '../utils/passwordAnalyzer.js';
 import { generateWordlistJS } from '../utils/customWordlist.js';
@@ -767,6 +767,235 @@ export const jtrRecover = async (req, res) => {
   } catch (error) {
     console.error('JTR Recovery Error:', error);
     res.status(500).json({ success: false, message: 'Server error during JTR password recovery' });
+  }
+};
+
+/**
+ * @desc    JTR Live Streaming via SSE — runs real john binary, pipes stdout/stderr in real-time
+ * @route   GET /api/auth/jtr-stream
+ * @access  Public
+ */
+export const jtrStream = async (req, res) => {
+  // SSE headers — keep connection alive and stream lines
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.flushHeaders();
+
+  let isFinished = false;
+  let activeProc = null;
+
+  const sendEvent = (data) => {
+    if (!res.writableEnded) {
+      try { res.write(`data: ${JSON.stringify(data)}\n\n`); } catch (e) {}
+    }
+  };
+
+  const endStream = () => {
+    if (!isFinished) {
+      isFinished = true;
+      if (activeProc && !activeProc.killed) {
+        try { activeProc.kill('SIGKILL'); } catch (e) {}
+      }
+      if (!res.writableEnded) res.end();
+    }
+  };
+
+  req.on('close', endStream);
+
+  try {
+    const { email, otp } = req.query;
+
+    if (!email || !otp) {
+      sendEvent({ type: 'error', message: 'Email and OTP are required' });
+      return endStream();
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      sendEvent({ type: 'error', message: 'User not found' });
+      return endStream();
+    }
+
+    if (!user.resetOtp || user.resetOtp !== otp) {
+      sendEvent({ type: 'error', message: 'Invalid OTP code' });
+      return endStream();
+    }
+
+    if (new Date() > user.resetOtpExpires) {
+      sendEvent({ type: 'error', message: 'OTP has expired' });
+      return endStream();
+    }
+
+    const targetHash = user.passwordMd5Crypt || user.password;
+    const formatName = targetHash.startsWith('$1$') ? 'md5crypt' : 'bcrypt';
+    const rockyouPath = getRockYouPath();
+
+    // Unique session files
+    const uid = Math.random().toString(36).substring(7);
+    const hashFile    = path.join(process.cwd(), `jtr_hash_${uid}.txt`);
+    const potFile     = path.join(process.cwd(), `jtr_pot_${uid}.pot`);
+    const customWlFile = path.join(process.cwd(), `jtr_cwl_${uid}.txt`);
+
+    // Write target hash
+    fs.writeFileSync(hashFile, targetHash + '\n');
+
+    // Generate & write custom wordlist
+    const customWordlist = generateWordlistJS(user.name, user.dob, user.collegeName, user.favoriteWord);
+    fs.writeFileSync(customWlFile, customWordlist.join('\n'));
+
+    const cleanup = () => {
+      [hashFile, potFile, customWlFile].forEach(f => {
+        try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch (e) {}
+      });
+    };
+
+    const startTime = Date.now();
+
+    // ── Banner ───────────────────────────────────────────────────────────
+    sendEvent({ type: 'log', line: '┌─────────────────────────────────────────────────────┐' });
+    sendEvent({ type: 'log', line: '│       JOHN THE RIPPER  ·  LIVE EXECUTION            │' });
+    sendEvent({ type: 'log', line: '└─────────────────────────────────────────────────────┘' });
+    sendEvent({ type: 'log', line: '' });
+    sendEvent({ type: 'log', line: `[*] Target account  : ${email}` });
+    sendEvent({ type: 'log', line: `[*] Hash format     : ${formatName}` });
+    sendEvent({ type: 'log', line: `[*] Hash value      : ${targetHash}` });
+    sendEvent({ type: 'log', line: `[*] Custom wordlist : ${customWordlist.length} candidates (name/dob/college/word combos)` });
+    sendEvent({ type: 'log', line: `[*] Rockyou path    : ${rockyouPath}` });
+    sendEvent({ type: 'log', line: '' });
+
+    // ── Helper: spawn john and pipe output live ───────────────────────────
+    const runJohnLive = (attackLabel, johnArgs) => {
+      return new Promise((resolve) => {
+        if (isFinished) return resolve(null);
+
+        sendEvent({ type: 'log', line: `━━━━ ${attackLabel} ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━` });
+        sendEvent({ type: 'log', line: `$ john ${johnArgs.join(' ')}` });
+        sendEvent({ type: 'log', line: '' });
+
+        const proc = spawn('john', johnArgs, {
+          cwd: process.cwd(),
+          env: { ...process.env, JOHN_NO_SIGSEGV: '1' }
+        });
+        activeProc = proc;
+
+        // Pipe stdout live
+        proc.stdout.on('data', (chunk) => {
+          chunk.toString().split('\n').forEach(line => {
+            if (line.trim()) sendEvent({ type: 'log', line });
+          });
+        });
+
+        // Pipe stderr live (john writes progress to stderr)
+        proc.stderr.on('data', (chunk) => {
+          chunk.toString().split('\n').forEach(line => {
+            const l = line.trim();
+            if (l && !l.startsWith('Press') && !l.startsWith('(To see')) {
+              sendEvent({ type: 'log', line: l });
+            }
+          });
+        });
+
+        const timeoutId = setTimeout(() => {
+          if (!proc.killed) {
+            sendEvent({ type: 'log', line: '[!] Attack timeout — moving to next strategy...' });
+            proc.kill('SIGKILL');
+          }
+        }, 25000);
+
+        proc.on('close', async () => {
+          clearTimeout(timeoutId);
+          activeProc = null;
+
+          // Check pot file for cracked result
+          const showResult = await new Promise(r => {
+            exec(
+              `john --show --format=${formatName} --pot=${potFile} ${hashFile}`,
+              { cwd: process.cwd() },
+              (err, stdout) => r(stdout || '')
+            );
+          });
+
+          if (showResult && showResult.includes(':')) {
+            const firstLine = showResult.split('\n')[0];
+            const colonIdx  = firstLine.indexOf(':');
+            if (colonIdx > 0) {
+              const pw = firstLine.substring(colonIdx + 1).trim();
+              if (pw) return resolve(pw);
+            }
+          }
+          resolve(null);
+        });
+
+        proc.on('error', (err) => {
+          clearTimeout(timeoutId);
+          sendEvent({ type: 'log', line: `[!] spawn error: ${err.message}` });
+          resolve(null);
+        });
+      });
+    };
+
+    let crackedPassword = null;
+    let winner = null;
+
+    // ── Attack 1: Custom Wordlist ────────────────────────────────────────
+    const r1 = await runJohnLive('ATTACK 1/3 — Custom Wordlist', [
+      `--format=${formatName}`,
+      `--pot=${potFile}`,
+      `--wordlist=${customWlFile}`,
+      hashFile
+    ]);
+    if (r1) { crackedPassword = r1; winner = 'Custom Wordlist'; }
+
+    // ── Attack 2: Rockyou Dictionary ────────────────────────────────────
+    if (!crackedPassword && !isFinished) {
+      sendEvent({ type: 'log', line: '' });
+      const r2 = await runJohnLive('ATTACK 2/3 — rockyou.txt Dictionary', [
+        `--format=${formatName}`,
+        `--pot=${potFile}`,
+        `--wordlist=${rockyouPath}`,
+        hashFile
+      ]);
+      if (r2) { crackedPassword = r2; winner = 'rockyou.txt Dictionary'; }
+    }
+
+    // ── Attack 3: Incremental Brute Force ───────────────────────────────
+    if (!crackedPassword && !isFinished) {
+      sendEvent({ type: 'log', line: '' });
+      const r3 = await runJohnLive('ATTACK 3/3 — Incremental Brute Force', [
+        `--format=${formatName}`,
+        `--pot=${potFile}`,
+        '--incremental',
+        hashFile
+      ]);
+      if (r3) { crackedPassword = r3; winner = 'Incremental Brute Force'; }
+    }
+
+    const timeTaken = ((Date.now() - startTime) / 1000).toFixed(2);
+
+    sendEvent({ type: 'log', line: '' });
+    if (crackedPassword) {
+      sendEvent({ type: 'log', line: `[+] ══════════════════════════════════════════════════` });
+      sendEvent({ type: 'log', line: `[+] SUCCESS  — cracked by: ${winner}` });
+      sendEvent({ type: 'log', line: `[+] Password : ${crackedPassword}` });
+      sendEvent({ type: 'log', line: `[+] Time     : ${timeTaken}s` });
+      sendEvent({ type: 'log', line: `[+] ══════════════════════════════════════════════════` });
+    } else {
+      sendEvent({ type: 'log', line: `[-] ══════════════════════════════════════════════════` });
+      sendEvent({ type: 'log', line: `[-] All attacks exhausted — password NOT cracked` });
+      sendEvent({ type: 'log', line: `[-] Time     : ${timeTaken}s` });
+      sendEvent({ type: 'log', line: `[-] ══════════════════════════════════════════════════` });
+    }
+
+    cleanup();
+    sendEvent({ type: 'done', cracked: !!crackedPassword, password: crackedPassword, winner, timeTaken });
+    endStream();
+
+  } catch (err) {
+    console.error('JTR Stream Error:', err);
+    sendEvent({ type: 'error', message: err.message });
+    endStream();
   }
 };
 
