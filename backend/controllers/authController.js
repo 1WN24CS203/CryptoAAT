@@ -1,10 +1,10 @@
-import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import nodemailer from 'nodemailer';
+import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
-import crypto from 'crypto';
-import { exec } from 'child_process';
+import nodemailer from 'nodemailer';
+import { exec, execSync } from 'child_process';
 import User from '../models/User.js';
 import { analyzePassword } from '../utils/passwordAnalyzer.js';
 import { generateWordlistJS } from '../utils/customWordlist.js';
@@ -16,10 +16,10 @@ const generateToken = (id) => {
   });
 };
 
-// Helper to execute commands
+// Helper to execute commands synchronously/asynchronously
 const runCommand = (cmd) => {
   return new Promise((resolve) => {
-    exec(cmd, (error, stdout, stderr) => {
+    exec(cmd, { cwd: process.cwd() }, (error, stdout, stderr) => {
       resolve({ error, stdout, stderr });
     });
   });
@@ -28,35 +28,29 @@ const runCommand = (cmd) => {
 // Generates a standard FreeBSD-compatible md5crypt ($1$) hash of a password
 const getMd5Crypt = (password, salt = 'aat') => {
   return new Promise((resolve) => {
-    // Clean salt: up to 8 characters, only before first '$'
     if (salt.startsWith("$1$")) salt = salt.slice(3);
     const pos = salt.indexOf("$");
     if (pos !== -1) salt = salt.slice(0, pos);
     salt = salt.slice(0, 8);
 
     const key = password;
-    
-    // Start digest A
     let ctx = crypto.createHash('md5');
     ctx.update(key);
     ctx.update("$1$");
     ctx.update(salt);
 
-    // Start digest B
     let ctx1 = crypto.createHash('md5');
     ctx1.update(key);
     ctx1.update(salt);
     ctx1.update(key);
     let final = ctx1.digest();
 
-    // Add B's output to A
     let pl = key.length;
     while (pl > 0) {
       ctx.update(final.slice(0, Math.min(pl, 16)));
       pl -= 16;
     }
 
-    // For each bit of the password length, add 0 or the first character of the password
     for (let i = key.length; i > 0; i >>= 1) {
       if ((i & 1) !== 0) {
         ctx.update(Buffer.from([0]));
@@ -67,7 +61,6 @@ const getMd5Crypt = (password, salt = 'aat') => {
 
     final = ctx.digest();
 
-    // 1000 rounds of MD5
     for (let i = 0; i < 1000; i++) {
       let ctx2 = crypto.createHash('md5');
       if ((i & 1) !== 0) {
@@ -92,7 +85,6 @@ const getMd5Crypt = (password, salt = 'aat') => {
       final = ctx2.digest();
     }
 
-    // Base64 encoding using a custom permutation
     const BASE64_ALPHABET = "./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
     const toBase64 = (v, n) => {
       let s = "";
@@ -140,13 +132,11 @@ export const register = async (req, res) => {
       return res.status(400).json({ success: false, message: 'All registration fields are required' });
     }
 
-    // Check if user already exists
     const userExists = await User.findOne({ email });
     if (userExists) {
       return res.status(400).json({ success: false, message: 'User already exists with this email' });
     }
 
-    // Run password analyzer on the plaintext password first
     const analysis = analyzePassword(password, {
       name,
       email,
@@ -155,12 +145,10 @@ export const register = async (req, res) => {
       favoriteWord,
     });
 
-    // Hash password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
     const md5CryptPassword = await getMd5Crypt(password);
 
-    // Create user with analyzer outputs cached
     const user = await User.create({
       name,
       email,
@@ -211,7 +199,6 @@ export const login = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Email and password are required' });
     }
 
-    // Find user by email
     const user = await User.findOne({ email });
 
     if (user && (await bcrypt.compare(password, user.password))) {
@@ -255,16 +242,13 @@ export const forgotPassword = async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found with this email' });
     }
 
-    // Generate 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const expiryTime = Date.now() + 15 * 60 * 1000; // 15 minutes
 
-    // Store in DB
     user.resetOtp = otp;
     user.resetOtpExpires = expiryTime;
     await user.save();
 
-    // Print to console in high visibility
     console.log('\n\x1b[36m==================================================\x1b[0m');
     console.log('\x1b[33m                    CRYPTOAAT OTP                 \x1b[0m');
     console.log(`\x1b[37m  OTP Code for: ${email}\x1b[0m`);
@@ -272,7 +256,6 @@ export const forgotPassword = async (req, res) => {
     console.log('\x1b[37m  Expires in: 15 minutes\x1b[0m');
     console.log('\x1b[36m==================================================\n\x1b[0m');
 
-    // Try sending email if SMTP is configured
     if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
       try {
         const transporter = nodemailer.createTransport({
@@ -302,7 +285,6 @@ export const forgotPassword = async (req, res) => {
           `,
         };
 
-        // Send email in the background to avoid blocking the API response
         transporter.sendMail(mailOptions)
           .then(() => console.log(`Email successfully sent to ${email}`))
           .catch((mailError) => console.error('SMTP background sending error:', mailError.message));
@@ -377,7 +359,6 @@ export const resetPassword = async (req, res) => {
       return res.status(400).json({ success: false, message: 'OTP code has expired' });
     }
 
-    // Run password analyzer for the new password
     const analysis = analyzePassword(newPassword, {
       name: user.name,
       email: user.email,
@@ -386,12 +367,10 @@ export const resetPassword = async (req, res) => {
       favoriteWord: user.favoriteWord,
     });
 
-    // Hash the new password
     const salt = await bcrypt.genSalt(10);
     user.password = await bcrypt.hash(newPassword, salt);
     user.passwordMd5Crypt = await getMd5Crypt(newPassword);
 
-    // Clear OTP fields & update cached strength metrics
     user.resetOtp = null;
     user.resetOtpExpires = null;
     user.passwordScore = analysis.score;
@@ -415,7 +394,6 @@ export const resetPassword = async (req, res) => {
  */
 export const getProfile = async (req, res) => {
   try {
-    // req.user is populated by protect middleware
     const user = await User.findById(req.user._id).select('-password');
     if (!user) {
       return res.status(404).json({ success: false, message: 'User profile not found' });
@@ -447,7 +425,7 @@ export const getProfile = async (req, res) => {
 /**
  * @desc    Public interactive test password analyzer endpoint
  * @route   POST /api/auth/analyze-test
- * @access  Public/Private (we can make it public so users can test arbitrary passwords)
+ * @access  Public
  */
 export const testAnalyzer = async (req, res) => {
   try {
@@ -463,307 +441,118 @@ export const testAnalyzer = async (req, res) => {
   }
 };
 
+// Locates the actual Kali Linux rockyou.txt wordlist and extracts it locally if compressed
+const getRockYouPath = () => {
+  const standardPaths = [
+    '/usr/share/wordlists/rockyou.txt',
+    path.join(process.cwd(), 'rockyou.txt'),
+  ];
 
-export const ensureStandardDictionary = () => {
-  const dictPath = path.join(process.cwd(), 'rockyou.txt');
-  if (!fs.existsSync(dictPath) || fs.statSync(dictPath).size === 0) {
-    // Generate a curated list of top 2000 common passwords from rockyou/standard lists
-    const commonPasswords = [
-      '123456', 'password', '12345678', '123456789', '1234', '12345',
-      'qwerty', '1234567', 'welcome', '111111', '123123', 'admin',
-      'letmein', 'password123', '1234567890', 'princess', 'iloveyou',
-      'sunshine', 'monkey', 'charlie', 'daniel', 'jordan', 'superman',
-      'shadow', 'killer', 'soccer', 'football', 'baseball', 'hockey',
-      'cheesecake', 'cookie', 'butter', 'coffee', 'chocolate', 'mustang',
-      'trustno1', 'welcome1', 'admin123', 'qwertyuiop', 'pass123'
-    ];
-    
-    const names = ['alex', 'ashley', 'andrew', 'brandon', 'brian', 'chris', 'cody', 'david', 'dylan', 'emily', 'eric', 'haley', 'jacob', 'james', 'jessica', 'john', 'justin', 'kyle', 'lauren', 'matthew', 'megan', 'michael', 'nathan', 'nicholas', 'nicole', 'rachel', 'ryan', 'sarah', 'taylor', 'tyler', 'william', 'zachary'];
-    
-    const extra = [];
-    names.forEach(name => {
-      extra.push(name);
-      extra.push(name.charAt(0).toUpperCase() + name.slice(1));
-      extra.push(name + '123');
-      extra.push(name + '1');
-      extra.push(name + '2020');
-      extra.push(name + '2021');
-      extra.push(name + '2022');
-      extra.push(name + '2023');
-      extra.push(name + '2024');
-      extra.push(name + '2025');
-      extra.push(name + '2026');
-    });
-    
-    for (let i = 0; i < 300; i++) {
-      extra.push(i.toString());
-      extra.push('password' + i);
-      extra.push('welcome' + i);
-      extra.push('admin' + i);
-      extra.push('pass' + i);
+  for (const p of standardPaths) {
+    if (fs.existsSync(p) && fs.statSync(p).size > 0) {
+      return p;
     }
-    
-    const finalSet = new Set([...commonPasswords, ...extra]);
-    fs.writeFileSync(dictPath, Array.from(finalSet).join('\n'));
-    console.log(`[+] Initialized fallback standard dictionary with ${finalSet.size} entries.`);
   }
-};
 
-const runJSConcurrentCracking = async (targetHash, customWordlist, standardWordlist, formatName) => {
-  let isFinished = false;
-  let crackedPassword = null;
-  let winner = null;
-  const terminalLogs = [];
-
-  terminalLogs.push(`[*] Launching JS Native Parallel Solvers...`);
-
-  // Shared statistics
-  let customChecked = 0;
-  let standardChecked = 0;
-  let bruteChecked = 0;
-
-  // Alphabet for brute force
-  const bruteCharset = 'abcdefghijklmnopqrstuvwxyz0123456789!@#$';
-  
-  const verifyCandidate = async (password) => {
-    if (formatName === 'md5crypt') {
-      const candHash = await getMd5Crypt(password, targetHash);
-      return candHash === targetHash;
-    } else {
-      return await bcrypt.compare(password, targetHash);
+  // Auto-extraction system for Kali Linux compressed wordlist
+  const compressedKaliPath = '/usr/share/wordlists/rockyou.txt.gz';
+  if (fs.existsSync(compressedKaliPath)) {
+    try {
+      const localRockyou = path.join(process.cwd(), 'rockyou.txt');
+      if (!fs.existsSync(localRockyou) || fs.statSync(localRockyou).size === 0) {
+        console.log(`[*] Auto-extracting ${compressedKaliPath} to ${localRockyou}...`);
+        execSync(`gunzip -c "${compressedKaliPath}" > "${localRockyou}"`);
+      }
+      return localRockyou;
+    } catch (err) {
+      console.error('[!] Failed to auto-extract rockyou.txt.gz:', err);
     }
-  };
+  }
 
-  // 1. Custom Dictionary Loop
-  const runCustomAttack = () => {
-    return new Promise((resolve) => {
-      let index = 0;
-      const batchSize = formatName === 'md5crypt' ? 20 : 1;
-
-      const checkNext = async () => {
-        if (isFinished) {
-          resolve();
-          return;
-        }
-
-        const end = Math.min(index + batchSize, customWordlist.length);
-        for (let i = index; i < end; i++) {
-          const cand = customWordlist[i];
-          customChecked++;
-          
-          if (customChecked % 100 === 0 || i === customWordlist.length - 1) {
-            terminalLogs.push(`[~] [Custom Dictionary] Checked ${customChecked}/${customWordlist.length} candidates...`);
-          }
-
-          const match = await verifyCandidate(cand);
-          if (match) {
-            isFinished = true;
-            crackedPassword = cand;
-            winner = 'Custom Dictionary';
-            resolve();
-            return;
-          }
-        }
-
-        index = end;
-        if (index >= customWordlist.length) {
-          terminalLogs.push(`[-] [Custom Dictionary] Wordlist exhausted. Checked ${customChecked} candidates.`);
-          resolve();
-        } else {
-          setImmediate(checkNext);
-        }
-      };
-      
-      terminalLogs.push(`[+] [Custom Dictionary] Started check (candidates: ${customWordlist.length}).`);
-      setImmediate(checkNext);
-    });
-  };
-
-  // 2. Standard Dictionary Loop
-  const runStandardAttack = () => {
-    return new Promise((resolve) => {
-      let index = 0;
-      const batchSize = formatName === 'md5crypt' ? 20 : 1;
-
-      const checkNext = async () => {
-        if (isFinished) {
-          resolve();
-          return;
-        }
-
-        const end = Math.min(index + batchSize, standardWordlist.length);
-        for (let i = index; i < end; i++) {
-          const cand = standardWordlist[i];
-          standardChecked++;
-
-          if (standardChecked % 500 === 0 || i === standardWordlist.length - 1) {
-            terminalLogs.push(`[~] [Standard Dictionary] Checked ${standardChecked}/${standardWordlist.length} candidates...`);
-          }
-
-          const match = await verifyCandidate(cand);
-          if (match) {
-            isFinished = true;
-            crackedPassword = cand;
-            winner = 'Standard Dictionary';
-            resolve();
-            return;
-          }
-        }
-
-        index = end;
-        if (index >= standardWordlist.length) {
-          terminalLogs.push(`[-] [Standard Dictionary] Wordlist exhausted. Checked ${standardChecked} candidates.`);
-          resolve();
-        } else {
-          setImmediate(checkNext);
-        }
-      };
-
-      terminalLogs.push(`[+] [Standard Dictionary] Started check (candidates: ${standardWordlist.length}).`);
-      setImmediate(checkNext);
-    });
-  };
-
-  // 3. Brute Force Loop
-  const runBruteForceAttack = () => {
-    return new Promise((resolve) => {
-      let currentCounter = 0;
-      const batchSize = formatName === 'md5crypt' ? 10 : 1;
-      
-      const getBruteForcePassword = (n) => {
-        let result = '';
-        let temp = n;
-        while (temp >= 0) {
-          result = bruteCharset[temp % bruteCharset.length] + result;
-          temp = Math.floor(temp / bruteCharset.length) - 1;
-        }
-        return result;
-      };
-
-      const checkNext = async () => {
-        if (isFinished) {
-          resolve();
-          return;
-        }
-
-        const maxBruteAttempts = formatName === 'md5crypt' ? 20000 : 100;
-
-        const end = Math.min(currentCounter + batchSize, maxBruteAttempts);
-        for (let i = currentCounter; i < end; i++) {
-          const cand = getBruteForcePassword(i);
-          bruteChecked++;
-
-          if (bruteChecked % 200 === 0 || (formatName === 'bcrypt' && bruteChecked % 10 === 0)) {
-            terminalLogs.push(`[~] [Brute Force] Tried combinations up to "${cand}" (checked ${bruteChecked})...`);
-          }
-
-          const match = await verifyCandidate(cand);
-          if (match) {
-            isFinished = true;
-            crackedPassword = cand;
-            winner = 'Brute Force';
-            resolve();
-            return;
-          }
-        }
-
-        currentCounter = end;
-        if (currentCounter >= maxBruteAttempts) {
-          terminalLogs.push(`[-] [Brute Force] Safety limit reached. Checked ${bruteChecked} combinations.`);
-          resolve();
-        } else {
-          setImmediate(checkNext);
-        }
-      };
-
-      terminalLogs.push(`[+] [Brute Force] Started incremental check (charset size: ${bruteCharset.length}).`);
-      setImmediate(checkNext);
-    });
-  };
-
-  // Race all three attacks concurrently
-  await Promise.all([runCustomAttack(), runStandardAttack(), runBruteForceAttack()]);
-
-  return { crackedPassword, winner, terminalLogs };
+  // Fallback path
+  return '/usr/share/wordlists/rockyou.txt';
 };
 
-const runJTRConcurrentCracking = (targetHash, formatName) => {
+// Helper for cleaning up unique files
+const cleanupFiles = (files) => {
+  files.forEach(file => {
+    try {
+      const p = path.join(process.cwd(), file);
+      if (fs.existsSync(p)) fs.unlinkSync(p);
+    } catch (e) {}
+  });
+};
+
+// Run JTR against target hash using actual binary execution
+const runJTRConcurrentCracking = (targetHash, formatName, user) => {
   return new Promise(async (resolve) => {
     let isFinished = false;
     let crackedPassword = null;
     let winner = null;
     const terminalLogs = [];
 
-    const customPot = 'custom.pot';
-    const standardPot = 'standard.pot';
-    const brutePot = 'brute.pot';
+    // Unique IDs for parallel safety
+    const uniqueId = Math.random().toString(36).substring(7);
+    const hashFile = `hash_${uniqueId}.txt`;
+    const hashPath = path.join(process.cwd(), hashFile);
+    fs.writeFileSync(hashPath, targetHash + '\n');
 
-    const customPotPath = path.join(process.cwd(), customPot);
-    const standardPotPath = path.join(process.cwd(), standardPot);
-    const brutePotPath = path.join(process.cwd(), brutePot);
+    const customPotFile = `custom_${uniqueId}.pot`;
+    const standardPotFile = `standard_${uniqueId}.pot`;
+    const brutePotFile = `brute_${uniqueId}.pot`;
 
-    const customSession = 'custom';
-    const standardSession = 'standard';
-    const bruteSession = 'brute';
+    const customSession = `custom_${uniqueId}`;
+    const standardSession = `standard_${uniqueId}`;
+    const bruteSession = `brute_${uniqueId}`;
 
-    const cleanSessionFiles = (sessionName) => {
-      try {
-        const recFile = path.join(process.cwd(), `${sessionName}.rec`);
-        if (fs.existsSync(recFile)) fs.unlinkSync(recFile);
-      } catch (e) {}
-    };
+    const rockyouPath = getRockYouPath();
 
-    [customPotPath, standardPotPath, brutePotPath].forEach(p => {
-      try {
-        if (fs.existsSync(p)) fs.unlinkSync(p);
-      } catch (e) {}
-    });
-    [customSession, standardSession, bruteSession].forEach(cleanSessionFiles);
+    terminalLogs.push(`[*] Target Hash written to: ${hashFile}`);
+    terminalLogs.push(`[*] Detecting wordlists for JTR attacks...`);
+    terminalLogs.push(`[+] Custom Wordlist path: custom_wordlist.txt`);
+    terminalLogs.push(`[+] Standard Dictionary (rockyou.txt) path: ${rockyouPath}`);
 
-    terminalLogs.push(`[*] Launching John the Ripper Parallel Attacks...`);
-
+    // Set up real john commands
     const attacks = [
       {
-        name: 'Custom Dictionary',
-        cmd: `john --format=${formatName} --pot=${customPot} --session=${customSession} --wordlist=custom_wordlist.txt hash.txt`,
-        pot: customPot,
+        name: 'Custom Wordlist',
+        cmd: `john --format=${formatName} --pot=${customPotFile} --session=${customSession} --wordlist=custom_wordlist.txt ${hashFile}`,
+        pot: customPotFile,
         session: customSession
       },
       {
-        name: 'Standard Dictionary',
-        cmd: `john --format=${formatName} --pot=${standardPot} --session=${standardSession} --wordlist=rockyou.txt hash.txt`,
-        pot: standardPot,
+        name: 'Standard Dictionary (rockyou.txt)',
+        cmd: `john --format=${formatName} --pot=${standardPotFile} --session=${standardSession} --wordlist="${rockyouPath}" ${hashFile}`,
+        pot: standardPotFile,
         session: standardSession
       },
       {
-        name: 'Brute Force',
-        cmd: `john --format=${formatName} --pot=${brutePot} --session=${bruteSession} --incremental hash.txt`,
-        pot: brutePot,
+        name: 'Brute Force Incremental',
+        cmd: `john --format=${formatName} --pot=${brutePotFile} --session=${bruteSession} --incremental ${hashFile}`,
+        pot: brutePotFile,
         session: bruteSession
       }
     ];
 
     const processes = [];
 
+    terminalLogs.push(`\n[*] Executing Parallel John the Ripper Attacks:`);
+    
     attacks.forEach(attack => {
-      terminalLogs.push(`[+] [JTR ${attack.name}] Started command: $ ${attack.cmd}`);
+      terminalLogs.push(`[JTR ${attack.name}] Running: ${attack.cmd}`);
       
-      const proc = exec(attack.cmd, (error, stdout, stderr) => {
+      const proc = exec(attack.cmd, { cwd: process.cwd() }, (error, stdout, stderr) => {
         proc.exited = true;
-        if (error && error.signal === 'SIGTERM') {
-          return;
-        }
         if (stdout) {
           terminalLogs.push(`[JTR ${attack.name} STDOUT] ${stdout.trim()}`);
         }
         if (stderr) {
           const cleanStderr = stderr.trim();
-          if (cleanStderr && !cleanStderr.includes('Command line') && !cleanStderr.includes('Press Ctrl-C')) {
-            terminalLogs.push(`[JTR ${attack.name}] ${cleanStderr}`);
+          if (cleanStderr && !cleanStderr.includes('Press Ctrl-C') && !cleanStderr.includes('Command line')) {
+            terminalLogs.push(`[JTR ${attack.name} STDERR] ${cleanStderr}`);
           }
         }
       });
-      
       proc.exited = false;
       processes.push({ proc, ...attack });
     });
@@ -775,26 +564,36 @@ const runJTRConcurrentCracking = (targetHash, formatName) => {
       }
 
       for (const attack of attacks) {
-        const potFilePath = path.join(process.cwd(), attack.pot);
-        if (fs.existsSync(potFilePath) && fs.statSync(potFilePath).size > 0) {
-          const showCmd = `john --show --format=${formatName} --pot=${attack.pot} hash.txt`;
-          const showResult = await runCommand(showCmd);
-          if (showResult.stdout && showResult.stdout.includes(':')) {
-            crackedPassword = showResult.stdout.split(':')[1].trim().split('\n')[0];
-            if (crackedPassword) {
-              isFinished = true;
-              winner = attack.name;
-              terminalLogs.push(`\n[+] [JTR ${attack.name}] CRACK SUCCESSFUL! Password found in ${attack.pot}`);
-              clearInterval(intervalId);
-              
-              processes.forEach(p => {
-                try {
-                  p.proc.kill();
-                } catch (err) {}
-              });
+        const potPath = path.join(process.cwd(), attack.pot);
+        if (fs.existsSync(potPath) && fs.statSync(potPath).size > 0) {
+          const showCmd = `john --show --format=${formatName} --pot=${attack.pot} ${hashFile}`;
+          const showResult = await new Promise((resCmd) => {
+            exec(showCmd, { cwd: process.cwd() }, (err, stdout, stderr) => {
+              resCmd({ stdout, stderr });
+            });
+          });
 
-              resolve({ crackedPassword, winner, terminalLogs });
-              return;
+          if (showResult.stdout && showResult.stdout.includes(':')) {
+            const parts = showResult.stdout.split('\n')[0].split(':');
+            if (parts.length >= 2) {
+              crackedPassword = parts.slice(1).join(':').trim();
+              if (crackedPassword) {
+                isFinished = true;
+                winner = attack.name;
+                terminalLogs.push(`\n[+] [SUCCESS] JTR ${attack.name} cracked the password!`);
+                clearInterval(intervalId);
+                
+                processes.forEach(p => {
+                  try { p.proc.kill('SIGKILL'); } catch (e) {}
+                });
+
+                cleanupFiles([
+                  hashFile, customPotFile, standardPotFile, brutePotFile,
+                  `${customSession}.rec`, `${standardSession}.rec`, `${bruteSession}.rec`
+                ]);
+                resolve({ cracked: true, crackedPassword, winner, terminalLogs });
+                return;
+              }
             }
           }
         }
@@ -803,27 +602,64 @@ const runJTRConcurrentCracking = (targetHash, formatName) => {
       const allExited = processes.every(p => p.proc.exited);
       if (allExited) {
         clearInterval(intervalId);
-        terminalLogs.push(`\n[-] All JTR parallel processes have exited.`);
-        resolve({ crackedPassword: null, winner: null, terminalLogs });
+        
+        // Final pot check
+        for (const attack of attacks) {
+          const potPath = path.join(process.cwd(), attack.pot);
+          if (fs.existsSync(potPath) && fs.statSync(potPath).size > 0) {
+            const showCmd = `john --show --format=${formatName} --pot=${attack.pot} ${hashFile}`;
+            const showResult = await new Promise((resCmd) => {
+              exec(showCmd, { cwd: process.cwd() }, (err, stdout, stderr) => {
+                resCmd({ stdout, stderr });
+              });
+            });
+            if (showResult.stdout && showResult.stdout.includes(':')) {
+              const parts = showResult.stdout.split('\n')[0].split(':');
+              if (parts.length >= 2) {
+                crackedPassword = parts.slice(1).join(':').trim();
+                if (crackedPassword) {
+                  winner = attack.name;
+                  terminalLogs.push(`\n[+] [SUCCESS] JTR ${attack.name} cracked the password!`);
+                  cleanupFiles([
+                    hashFile, customPotFile, standardPotFile, brutePotFile,
+                    `${customSession}.rec`, `${standardSession}.rec`, `${bruteSession}.rec`
+                  ]);
+                  resolve({ cracked: true, crackedPassword, winner, terminalLogs });
+                  return;
+                }
+              }
+            }
+          }
+        }
+
+        terminalLogs.push(`\n[-] All JTR parallel processes exited. Password was NOT cracked.`);
+        cleanupFiles([
+          hashFile, customPotFile, standardPotFile, brutePotFile,
+          `${customSession}.rec`, `${standardSession}.rec`, `${bruteSession}.rec`
+        ]);
+        resolve({ cracked: false, crackedPassword: null, winner: null, terminalLogs });
       }
-    }, 200);
+    }, 500);
 
     setTimeout(() => {
       if (!isFinished) {
         isFinished = true;
         clearInterval(intervalId);
-        terminalLogs.push(`\n[!] JTR attack timeout reached (25s limit).`);
+        terminalLogs.push(`\n[!] Timeout: JTR attack timed out after 30 seconds.`);
         processes.forEach(p => {
-          try {
-            p.proc.kill();
-          } catch (err) {}
+          try { p.proc.kill('SIGKILL'); } catch (e) {}
         });
-        resolve({ crackedPassword: null, winner: null, terminalLogs });
+        cleanupFiles([
+          hashFile, customPotFile, standardPotFile, brutePotFile,
+          `${customSession}.rec`, `${standardSession}.rec`, `${bruteSession}.rec`
+        ]);
+        resolve({ cracked: false, crackedPassword: null, winner: null, terminalLogs });
       }
-    }, 25000);
+    }, 30000);
   });
 };
 
+// Core concurrency wrapper suite
 const runConcurrentCrackingSuite = async (user, targetHash) => {
   const startTime = Date.now();
   let crackedPassword = null;
@@ -843,60 +679,34 @@ const runConcurrentCrackingSuite = async (user, targetHash) => {
   const customWordlistPath = path.join(process.cwd(), 'custom_wordlist.txt');
   fs.writeFileSync(customWordlistPath, customWordlist.join('\n'));
 
-  // 2. Setup Standard Dictionary (rockyou)
-  ensureStandardDictionary();
-  const rockyouPath = path.join(process.cwd(), 'rockyou.txt');
-
-  // 3. Save target hash to disk
-  const hashPath = path.join(process.cwd(), 'hash.txt');
-  fs.writeFileSync(hashPath, targetHash + '\n');
-
-  terminalLogs.push(`[+] Wordlist generated : ${customWordlist.length} candidate passwords`);
-  terminalLogs.push(`[+] Saved custom wordlist to : custom_wordlist.txt`);
-  terminalLogs.push(`[+] Stored target hash       : hash.txt (${formatName})`);
+  terminalLogs.push(`[+] Custom wordlist generated : ${customWordlist.length} candidate passwords`);
+  terminalLogs.push(`[+] Saved custom wordlist to  : custom_wordlist.txt`);
+  terminalLogs.push(`[+] Active Cryptographic Hash  : ${targetHash.substring(0, 15)}... (${formatName})`);
 
   try {
-    // Check JTR binary availability
+    // Check JTR binary availability in PATH or standard Kali path
     const checkResult = await runCommand('john');
     if (checkResult.error && (checkResult.error.message.includes('not found') || checkResult.error.message.includes('not recognized') || checkResult.error.code === 127)) {
-      throw new Error('JTR binary not found');
+      throw new Error('John the Ripper (JTR) binary not found on the system PATH.');
     }
 
     usedRealJohn = true;
-    const crackResult = await runJTRConcurrentCracking(targetHash, formatName);
+    const crackResult = await runJTRConcurrentCracking(targetHash, formatName, user);
     crackedPassword = crackResult.crackedPassword;
     winner = crackResult.winner;
     terminalLogs = [...terminalLogs, ...crackResult.terminalLogs];
   } catch (e) {
     usedRealJohn = false;
-    terminalLogs.push(`[!] JTR binary execution skipped (not found in system PATH or failed to start).`);
-    terminalLogs.push(`[*] Falling back to JavaScript Cryptographic engine (concurrent loops)...`);
-
-    const dictContent = fs.readFileSync(rockyouPath, 'utf8');
-    const standardWordlist = dictContent.split(/\r?\n/).filter(Boolean).slice(0, 50000);
-
-    const crackResult = await runJSConcurrentCracking(targetHash, customWordlist, standardWordlist, formatName);
-    crackedPassword = crackResult.crackedPassword;
-    winner = crackResult.winner;
-    terminalLogs = [...terminalLogs, ...crackResult.terminalLogs];
+    terminalLogs.push(`[!] JTR execution failed: ${e.message}`);
+    crackedPassword = null;
+    winner = null;
   }
 
   const endTime = Date.now();
   const timeTakenSec = ((endTime - startTime) / 1000).toFixed(2);
 
-  // Clean up JTR artifacts
-  const filesToCleanup = [
-    'hash.txt',
-    'custom.pot', 'standard.pot', 'brute.pot',
-    'custom.rec', 'standard.rec', 'brute.rec',
-    'john.rec', 'john.pot'
-  ];
-  filesToCleanup.forEach(file => {
-    try {
-      const p = path.join(process.cwd(), file);
-      if (fs.existsSync(p)) fs.unlinkSync(p);
-    } catch (err) {}
-  });
+  // Final cleanup of any standard remaining .rec or .pot files
+  cleanupFiles(['custom_wordlist.txt']);
 
   return {
     cracked: !!crackedPassword,
@@ -908,6 +718,11 @@ const runConcurrentCrackingSuite = async (user, targetHash) => {
   };
 };
 
+/**
+ * @desc    Forgot Password JTR recovery handler
+ * @route   POST /api/auth/jtr-recover
+ * @access  Public
+ */
 export const jtrRecover = async (req, res) => {
   try {
     const { email, otp } = req.body;
@@ -931,7 +746,7 @@ export const jtrRecover = async (req, res) => {
 
     const targetHash = user.passwordMd5Crypt || user.password;
     
-    console.log(`\n=== JTR RECOVERY AUDIT RUNNING (CONCURRENT RACES) ===`);
+    console.log(`\n=== JTR PASSWORD RECOVERY RUNNING (CONCURRENT RACES) ===`);
     console.log('User Email:', user.email);
     console.log('Format detected:', targetHash.startsWith('$1$') ? 'md5crypt' : 'bcrypt');
     console.log('Target hash value:', targetHash);
@@ -955,6 +770,11 @@ export const jtrRecover = async (req, res) => {
   }
 };
 
+/**
+ * @desc    Dashboard JTR active password audit
+ * @route   POST /api/auth/jtr-audit
+ * @access  Private
+ */
 export const jtrAudit = async (req, res) => {
   try {
     const user = await User.findById(req.user._id);

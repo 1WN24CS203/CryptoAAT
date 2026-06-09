@@ -12,7 +12,6 @@ function VerifyOtp() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // References to the 6 input elements
   const inputRefs = [
     useRef(null),
     useRef(null),
@@ -22,7 +21,6 @@ function VerifyOtp() {
     useRef(null),
   ];
 
-  // Redirect if email is not provided in route state
   useEffect(() => {
     if (!email) {
       navigate('/forgot-password');
@@ -30,30 +28,25 @@ function VerifyOtp() {
   }, [email, navigate]);
 
   const handleChange = (index, value) => {
-    // Only allow single digit numbers
     if (isNaN(value)) return;
 
     const newOtp = [...otp];
     newOtp[index] = value.substring(value.length - 1);
     setOtp(newOtp);
 
-    // Auto-focus next input if value is filled
     if (value && index < 5) {
       inputRefs[index + 1].current.focus();
     }
   };
 
   const handleKeyDown = (index, e) => {
-    // Handle backspace navigation
     if (e.key === 'Backspace') {
       if (!otp[index] && index > 0) {
-        // Clear previous box and focus it
         const newOtp = [...otp];
         newOtp[index - 1] = '';
         setOtp(newOtp);
         inputRefs[index - 1].current.focus();
       } else {
-        // Clear current box
         const newOtp = [...otp];
         newOtp[index] = '';
         setOtp(newOtp);
@@ -86,7 +79,6 @@ function VerifyOtp() {
     setLoading(false);
 
     if (data.success) {
-      // Go to choice selection (Direct Reset or JTR Audited Recovery)
       navigate('/jtr-recover', { state: { email, otp: otpCode } });
     } else {
       setError(data.message || 'OTP verification failed');
@@ -98,8 +90,9 @@ function VerifyOtp() {
       <div className="col-sm-10 col-md-8 col-lg-5">
         <div className="glass-card p-4 p-md-5">
           <div className="text-center mb-4">
-            <h2 className="fw-bold text-dark">Verify OTP</h2>
-            <p className="text-muted">{email}</p>
+            <h2 className="fw-bold text-white mb-2" style={{ fontFamily: 'Outfit, sans-serif' }}>Verify OTP</h2>
+            <p className="text-secondary small">Enter the 6-digit code sent to:</p>
+            <p className="text-primary font-monospace fw-bold mb-0">{email}</p>
           </div>
 
           {error && (
@@ -120,7 +113,7 @@ function VerifyOtp() {
                   value={digit}
                   onChange={(e) => handleChange(idx, e.target.value)}
                   onKeyDown={(e) => handleKeyDown(idx, e)}
-                  className="otp-box"
+                  className="otp-box text-white"
                   pattern="[0-9]*"
                   inputMode="numeric"
                   autoFocus={idx === 0}
@@ -140,8 +133,8 @@ function VerifyOtp() {
             </div>
           </form>
 
-          <div className="text-center mt-3">
-            <Link to="/forgot-password" className="small text-decoration-none" style={{ color: '#4f46e5' }}>
+          <div className="text-center mt-4">
+            <Link to="/forgot-password" className="small text-decoration-none animate-color" style={{ color: 'var(--primary-color)' }}>
               Change Email
             </Link>
           </div>

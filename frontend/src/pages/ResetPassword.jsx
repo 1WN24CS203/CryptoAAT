@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useLocation, useNavigate, Link } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../utils/api';
 import { MdVisibility, MdVisibilityOff, MdErrorOutline, MdCheckCircleOutline } from 'react-icons/md';
 
@@ -16,7 +16,6 @@ function ResetPassword() {
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Redirect if credentials not present
   useEffect(() => {
     if (!email || !otp) {
       navigate('/forgot-password');
@@ -56,13 +55,13 @@ function ResetPassword() {
     }
   };
 
-
   return (
     <div className="animate-fade-in row justify-content-center align-items-center min-h-center py-4">
       <div className="col-sm-10 col-md-8 col-lg-5">
         <div className="glass-card p-4 p-md-5">
           <div className="text-center mb-4">
-            <h2 className="fw-bold text-dark">New Password</h2>
+            <h2 className="fw-bold text-white mb-2" style={{ fontFamily: 'Outfit, sans-serif' }}>New Password</h2>
+            <p className="text-secondary small">Set a new cryptographically strong password</p>
           </div>
 
           {error && (
@@ -75,13 +74,13 @@ function ResetPassword() {
           {success && (
             <div className="alert alert-success border-0 bg-success bg-opacity-10 text-success d-flex align-items-center gap-2 mb-4" role="alert">
               <MdCheckCircleOutline className="fs-5" />
-              <div>{success} Redirectioning to Login...</div>
+              <div>{success} Redirecting to Login...</div>
             </div>
           )}
 
           <form onSubmit={handleSubmit}>
             <div className="mb-3">
-              <label className="form-label text-muted small">New Password</label>
+              <label className="form-label text-secondary small">New Password</label>
               <div className="position-relative">
                 <input
                   type={showPassword ? 'text' : 'password'}
@@ -95,7 +94,7 @@ function ResetPassword() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="btn position-absolute top-50 end-0 translate-middle-y text-muted border-0 bg-transparent pe-3"
+                  className="btn position-absolute top-50 end-0 translate-middle-y text-secondary border-0 bg-transparent pe-3"
                 >
                   {showPassword ? <MdVisibilityOff className="fs-5" /> : <MdVisibility className="fs-5" />}
                 </button>
@@ -103,7 +102,7 @@ function ResetPassword() {
             </div>
 
             <div className="mb-3">
-              <label className="form-label text-muted small">Confirm New Password</label>
+              <label className="form-label text-secondary small">Confirm New Password</label>
               <input
                 type="password"
                 name="confirmPassword"
@@ -114,8 +113,6 @@ function ResetPassword() {
                 required
               />
             </div>
-
-
 
             <div className="d-grid mt-4">
               <button

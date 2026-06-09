@@ -24,7 +24,6 @@ function ForgotPassword() {
     setLoading(false);
 
     if (data.success) {
-      // Navigate to verify page, passing the email in state
       navigate('/verify-otp', { state: { email } });
     } else {
       setError(data.message || 'Error occurred. Please try again.');
@@ -36,7 +35,8 @@ function ForgotPassword() {
       <div className="col-sm-10 col-md-8 col-lg-5">
         <div className="glass-card p-4 p-md-5">
           <div className="text-center mb-4">
-            <h2 className="fw-bold text-dark">Recover Password</h2>
+            <h2 className="fw-bold text-white mb-2" style={{ fontFamily: 'Outfit, sans-serif' }}>Recover Password</h2>
+            <p className="text-secondary small">Enter your email to receive a password reset OTP code</p>
           </div>
 
           {error && (
@@ -48,7 +48,7 @@ function ForgotPassword() {
 
           <form onSubmit={handleSubmit}>
             <div className="mb-4">
-              <label className="form-label text-muted small">Email Address</label>
+              <label className="form-label text-secondary small">Email Address</label>
               <div className="position-relative">
                 <input
                   type="email"
@@ -59,7 +59,7 @@ function ForgotPassword() {
                   placeholder="john@example.com"
                   required
                 />
-                <MdEmail className="position-absolute top-50 start-0 translate-middle-y text-muted ms-3 fs-5" />
+                <MdEmail className="position-absolute top-50 start-0 translate-middle-y text-secondary ms-3 fs-5" />
               </div>
             </div>
 
@@ -75,7 +75,7 @@ function ForgotPassword() {
           </form>
 
           <div className="text-center mt-3">
-            <Link to="/login" className="small text-decoration-none" style={{ color: '#4f46e5' }}>
+            <Link to="/login" className="small text-decoration-none animate-color" style={{ color: 'var(--primary-color)' }}>
               Back to Login
             </Link>
           </div>
