@@ -15,9 +15,9 @@ import { generateWordlistJS } from '../utils/customWordlist.js';
 // JTR attack is allowed to run before moving on / timing out.
 // ─────────────────────────────────────────────────────────────────────────────
 const ATTACK_DURATIONS = {
-  customWordlist:  25000,   // ms — Custom Wordlist attack   (sequential / live stream)
-  rockyouDict:     25000,   // ms — rockyou.txt Dictionary   (sequential / live stream)
-  bruteForce:      25000,   // ms — Incremental Brute Force  (sequential / live stream)
+  customWordlist: 25000,   // ms — Custom Wordlist attack   (sequential / live stream)
+  rockyouDict: 25000,   // ms — rockyou.txt Dictionary   (sequential / live stream)
+  bruteForce: 25000,   // ms — Incremental Brute Force  (sequential / live stream)
   concurrentTotal: 30000,   // ms — Overall cap for ALL parallel attacks (jtrRecover / jtrAudit)
 };
 // ─────────────────────────────────────────────────────────────────────────────
@@ -109,7 +109,7 @@ const getMd5Crypt = (password, salt = 'aat') => {
     };
 
     let result = "$1$" + salt + "$";
-    
+
     const val = (((final[0] << 16) | (final[6] << 8) | final[12]) >>> 0);
     result += toBase64(val, 4);
 
@@ -492,7 +492,7 @@ const cleanupFiles = (files) => {
     try {
       const p = path.join(process.cwd(), file);
       if (fs.existsSync(p)) fs.unlinkSync(p);
-    } catch (e) {}
+    } catch (e) { }
   });
 };
 
@@ -550,10 +550,10 @@ const runJTRConcurrentCracking = (targetHash, formatName, user) => {
     const processes = [];
 
     terminalLogs.push(`\n[*] Executing Parallel John the Ripper Attacks:`);
-    
+
     attacks.forEach(attack => {
       terminalLogs.push(`[JTR ${attack.name}] Running: ${attack.cmd}`);
-      
+
       const proc = exec(attack.cmd, { cwd: process.cwd() }, (error, stdout, stderr) => {
         proc.exited = true;
         if (stdout) {
@@ -595,9 +595,9 @@ const runJTRConcurrentCracking = (targetHash, formatName, user) => {
                 winner = attack.name;
                 terminalLogs.push(`\n[+] [SUCCESS] JTR ${attack.name} cracked the password!`);
                 clearInterval(intervalId);
-                
+
                 processes.forEach(p => {
-                  try { p.proc.kill('SIGKILL'); } catch (e) {}
+                  try { p.proc.kill('SIGKILL'); } catch (e) { }
                 });
 
                 cleanupFiles([
@@ -615,7 +615,7 @@ const runJTRConcurrentCracking = (targetHash, formatName, user) => {
       const allExited = processes.every(p => p.proc.exited);
       if (allExited) {
         clearInterval(intervalId);
-        
+
         // Final pot check
         for (const attack of attacks) {
           const potPath = path.join(process.cwd(), attack.pot);
@@ -660,7 +660,7 @@ const runJTRConcurrentCracking = (targetHash, formatName, user) => {
         clearInterval(intervalId);
         terminalLogs.push(`\n[!] Timeout: JTR parallel attacks timed out after ${ATTACK_DURATIONS.concurrentTotal / 1000} seconds.`);
         processes.forEach(p => {
-          try { p.proc.kill('SIGKILL'); } catch (e) {}
+          try { p.proc.kill('SIGKILL'); } catch (e) { }
         });
         cleanupFiles([
           hashFile, customPotFile, standardPotFile, brutePotFile,
@@ -758,7 +758,7 @@ export const jtrRecover = async (req, res) => {
     }
 
     const targetHash = user.passwordMd5Crypt || user.password;
-    
+
     console.log(`\n=== JTR PASSWORD RECOVERY RUNNING (CONCURRENT RACES) ===`);
     console.log('User Email:', user.email);
     console.log('Format detected:', targetHash.startsWith('$1$') ? 'md5crypt' : 'bcrypt');
@@ -801,7 +801,7 @@ export const jtrStream = async (req, res) => {
 
   const sendEvent = (data) => {
     if (!res.writableEnded) {
-      try { res.write(`data: ${JSON.stringify(data)}\n\n`); } catch (e) {}
+      try { res.write(`data: ${JSON.stringify(data)}\n\n`); } catch (e) { }
     }
   };
 
@@ -809,7 +809,7 @@ export const jtrStream = async (req, res) => {
     if (!isFinished) {
       isFinished = true;
       if (activeProc && !activeProc.killed) {
-        try { activeProc.kill('SIGKILL'); } catch (e) {}
+        try { activeProc.kill('SIGKILL'); } catch (e) { }
       }
       if (!res.writableEnded) res.end();
     }
@@ -847,8 +847,8 @@ export const jtrStream = async (req, res) => {
 
     // Unique session files
     const uid = Math.random().toString(36).substring(7);
-    const hashFile    = path.join(process.cwd(), `jtr_hash_${uid}.txt`);
-    const potFile     = path.join(process.cwd(), `jtr_pot_${uid}.pot`);
+    const hashFile = path.join(process.cwd(), `jtr_hash_${uid}.txt`);
+    const potFile = path.join(process.cwd(), `jtr_pot_${uid}.pot`);
     const customWlFile = path.join(process.cwd(), `jtr_cwl_${uid}.txt`);
 
     // Write target hash
@@ -860,7 +860,7 @@ export const jtrStream = async (req, res) => {
 
     const cleanup = () => {
       [hashFile, potFile, customWlFile].forEach(f => {
-        try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch (e) {}
+        try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch (e) { }
       });
     };
 
@@ -932,7 +932,7 @@ export const jtrStream = async (req, res) => {
 
           if (showResult && showResult.includes(':')) {
             const firstLine = showResult.split('\n')[0];
-            const colonIdx  = firstLine.indexOf(':');
+            const colonIdx = firstLine.indexOf(':');
             if (colonIdx > 0) {
               const pw = firstLine.substring(colonIdx + 1).trim();
               if (pw) return resolve(pw);
