@@ -55,7 +55,7 @@ export const generateWordlistJS = (name = '', dob = '', college = '', favoriteWo
         nameShortforms.push(initials.charAt(i) + initials);
       }
     }
-    
+
     // Subsets and permutations of initials (e.g. pj, jm, pm, pjm, jmp)
     const nameInitialsList = nameParts.map(p => p.charAt(0));
     const subsets = getSubsets(nameInitialsList);
@@ -94,7 +94,7 @@ export const generateWordlistJS = (name = '', dob = '', college = '', favoriteWo
         collegeShortforms.push(collInitials.charAt(i) + collInitials);
       }
     }
-    
+
     // Subsets and permutations of college initials
     const subsets = getSubsets(collegeParts.map(p => p.charAt(0)));
     for (const sub of subsets) {
@@ -143,7 +143,7 @@ export const generateWordlistJS = (name = '', dob = '', college = '', favoriteWo
 
   // Add common weak passwords to basesSet so they also get full suffix/capitalization/leet variations
   const commonWeak = [
-    '123456', '12345678', '123456789', 'password', 'admin', 'welcome', 
+    '123456', '12345678', '123456789', 'password', 'admin', 'welcome',
     'qwerty', 'pass123', 'letmein', '12345', '1234567', 'password123',
     'password1234', 'admin123', 'admin1234', 'welcome123', 'welcome1',
     'iloveyou', 'princess', 'monkey', 'trustno1', 'shadow', 'superman'
@@ -176,7 +176,7 @@ export const generateWordlistJS = (name = '', dob = '', college = '', favoriteWo
     basesSet.add(part);
     basesSet.add(part.charAt(0).toUpperCase() + part.slice(1));
     basesSet.add(part.toUpperCase());
-    
+
     // Add part combos
     basesSet.add(part + fav);
     basesSet.add(fav + part);
@@ -195,16 +195,16 @@ export const generateWordlistJS = (name = '', dob = '', college = '', favoriteWo
   const extraBases = new Set();
   basesSet.forEach(base => {
     if (!base) return;
-    
+
     // 1. Reversed bases
     const rev = base.split('').reverse().join('');
     extraBases.add(rev);
     extraBases.add(rev.charAt(0).toUpperCase() + rev.slice(1));
     extraBases.add(rev.toUpperCase());
-    
+
     // 2. Double bases
     extraBases.add(base + base);
-    
+
     // 3. Toggle/alternate cases
     let alt1 = '';
     let alt2 = '';
@@ -219,7 +219,7 @@ export const generateWordlistJS = (name = '', dob = '', college = '', favoriteWo
     }
     extraBases.add(alt1);
     extraBases.add(alt2);
-    
+
     // Swap case
     let swap = '';
     for (let i = 0; i < base.length; i++) {
@@ -346,6 +346,20 @@ export const generateWordlistJS = (name = '', dob = '', college = '', favoriteWo
     }
   }
 
+  // Capitalized name helper
+  const capName = name.length > 0 ? name.charAt(0).toUpperCase() + name.slice(1) : '';
+
+  // DOB formats with NO special chars (plain concatenations only)
+  const dobPlain = [
+    day + mon + year,          // 18032006
+    day + mon + year.slice(-2),// 180306
+    year + mon + day,          // 20060318
+    mon + day + year,          // 03182006
+    year + day + mon,          // 20061803  (less common but some users do this)
+    day + year,                // 182006
+    mon + year,                // 032006
+  ].filter(Boolean);
+
   // Extra targeted combos
   const combos = [
     name + year + '!',
@@ -357,18 +371,36 @@ export const generateWordlistJS = (name = '', dob = '', college = '', favoriteWo
     name + '_' + fav,
     fav + '_' + name,
     name + day + mon + year,
+    '@' + day + mon + year,
+    '@' + day + mon + year.slice(-2),
     college + year,
     college + '@' + year,
     name + mon + year,
     fav + mon + year,
-    name.length > 0 && fav.length > 0 ? (name.charAt(0).toUpperCase() + name.slice(1) + fav.charAt(0).toUpperCase() + fav.slice(1)) : '',
-    name.length > 0 && fav.length > 0 ? (fav.charAt(0).toUpperCase() + fav.slice(1) + name.charAt(0).toUpperCase() + name.slice(1)) : '',
+    capName.length > 0 && fav.length > 0 ? (capName + fav.charAt(0).toUpperCase() + fav.slice(1)) : '',
+    capName.length > 0 && fav.length > 0 ? (fav.charAt(0).toUpperCase() + fav.slice(1) + capName) : '',
     name + fav + year,
     fav + name + year,
   ].filter(c => c.length > 0);
 
   for (const c of combos) {
     wordlist.add(c);
+  }
+
+  // name + separator + dob combos — covers all plain DOB formats
+  // with lowercase, Capitalized, and UPPERCASE name variants
+  const nameSeps = ['@', '.', '_', '-', ''];
+  for (const dobFmt of dobPlain) {
+    for (const sep of nameSeps) {
+      wordlist.add(name    + sep + dobFmt);   // rahul@18032006
+      wordlist.add(capName + sep + dobFmt);   // Rahul@18032006
+      wordlist.add(name.toUpperCase() + sep + dobFmt); // RAHUL@18032006
+    }
+    // fav + dob combos
+    if (fav.length > 0) {
+      wordlist.add(fav + '@' + dobFmt);
+      wordlist.add(fav + dobFmt);
+    }
   }
 
   return Array.from(wordlist).sort();
