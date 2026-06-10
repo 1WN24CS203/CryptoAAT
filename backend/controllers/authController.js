@@ -264,8 +264,8 @@ export const forgotPassword = async (req, res) => {
 
     console.log('\n\x1b[36m==================================================\x1b[0m');
     console.log('\x1b[33m                    CRYPTOAAT OTP                 \x1b[0m');
-    console.log(`\x1b[37m  OTP Code for: ${email}\x1b[0m`);
-    console.log(`\x1b[42m\x1b[30m  OTP CODE: ${otp}  \x1b[0m`);
+    console.log(`\x1b[37m  OTP Code for: ${email} sent\x1b[0m`);
+    // console.log(`\x1b[42m\x1b[30m  OTP CODE: ${otp}  \x1b[0m`);
     console.log('\x1b[37m  Expires in: 15 minutes\x1b[0m');
     console.log('\x1b[36m==================================================\n\x1b[0m');
 

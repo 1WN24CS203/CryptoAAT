@@ -392,7 +392,7 @@ export const generateWordlistJS = (name = '', dob = '', college = '', favoriteWo
   const nameSeps = ['@', '.', '_', '-', ''];
   for (const dobFmt of dobPlain) {
     for (const sep of nameSeps) {
-      wordlist.add(name    + sep + dobFmt);   // rahul@18032006
+      wordlist.add(name + sep + dobFmt);   // rahul@18032006
       wordlist.add(capName + sep + dobFmt);   // Rahul@18032006
       wordlist.add(name.toUpperCase() + sep + dobFmt); // RAHUL@18032006
     }
